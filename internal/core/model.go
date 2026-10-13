@@ -31,6 +31,7 @@ func ID() string {
 }
 
 type Agent struct {
+	Mode                 string `json:"mode,omitempty"` // observe or managed; empty preserves legacy managed agents
 	ID                   string `json:"id"`
 	Name                 string `json:"name"`
 	Description          string `json:"description"`
@@ -46,19 +47,24 @@ type Agent struct {
 }
 
 type Run struct {
-	ID            string    `json:"id"`
-	CorrelationID string    `json:"correlation_id"`
-	Agent         Agent     `json:"agent"`
-	Status        string    `json:"status"`
-	BudgetMicros  int64     `json:"budget_micros"`
-	CostMicros    int64     `json:"cost_micros"`
-	InputTokens   int64     `json:"input_tokens"`
-	OutputTokens  int64     `json:"output_tokens"`
-	OverBudget    bool      `json:"over_budget"`
-	GitHubRunID   int64     `json:"github_run_id"`
-	GitHubURL     string    `json:"github_url"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	RunAttempt             int64        `json:"run_attempt,omitempty"`
+	ClaudeUsage            *ClaudeUsage `json:"claude_usage,omitempty"`
+	EstimatedCostAvailable bool         `json:"estimated_cost_available,omitempty"`
+	RateLimitFailures      int64        `json:"rate_limit_failures,omitempty"`
+	APIErrors              int64        `json:"api_errors,omitempty"`
+	ID                     string       `json:"id"`
+	CorrelationID          string       `json:"correlation_id"`
+	Agent                  Agent        `json:"agent"`
+	Status                 string       `json:"status"`
+	BudgetMicros           int64        `json:"budget_micros"`
+	CostMicros             int64        `json:"cost_micros"`
+	InputTokens            int64        `json:"input_tokens"`
+	OutputTokens           int64        `json:"output_tokens"`
+	OverBudget             bool         `json:"over_budget"`
+	GitHubRunID            int64        `json:"github_run_id"`
+	GitHubURL              string       `json:"github_url"`
+	CreatedAt              time.Time    `json:"created_at"`
+	UpdatedAt              time.Time    `json:"updated_at"`
 }
 
 type Proposal struct {
@@ -88,6 +94,7 @@ type Approval struct {
 
 // Costs are deltas, expressed as integer microdollars. A stable event ID makes retries safe.
 type Event struct {
+	Claude        *Observation    `json:"claude,omitempty"`
 	ApprovalID    string          `json:"approval_id,omitempty"`
 	ID            string          `json:"id"`
 	RunID         string          `json:"run_id"`
@@ -110,6 +117,7 @@ type Event struct {
 }
 
 type Identity struct {
+	EventName  string
 	Repository string
 	Workflow   string
 	Ref        string
@@ -118,6 +126,7 @@ type Identity struct {
 }
 
 type WorkflowRun struct {
+	Attempt    int64
 	ID         int64
 	URL        string
 	Title      string
@@ -130,6 +139,7 @@ type WorkflowRun struct {
 type Backend interface {
 	Dispatch(context.Context, Agent, string, map[string]interface{}) error
 	GetRun(context.Context, Agent, int64) (WorkflowRun, error)
+	GetRunAttempt(context.Context, Agent, int64, int64) (WorkflowRun, error)
 	FindRuns(context.Context, Agent, string, time.Time) ([]WorkflowRun, error)
 	CreateIssue(context.Context, Agent, Proposal, string) (string, error)
 	FindIssue(context.Context, Agent, string) (string, error)

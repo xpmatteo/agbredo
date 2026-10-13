@@ -53,6 +53,14 @@ func TestOIDCAuthenticatesOnlyBoundShortLivedWorkflowTokens(t *testing.T) {
 	if identity.Repository != "o/r" || identity.Workflow != "agent.yml" || identity.Ref != "refs/heads/main" || identity.RunID != 123 || identity.RunAttempt != 1 {
 		t.Fatalf("identity mismatch %#v", identity)
 	}
+	for _, event := range []string{"schedule", "push", "repository_dispatch", "issues", "issue_comment"} {
+		claims := valid()
+		claims["event_name"] = event
+		identity, err := o.Verify(context.Background(), sign(claims, "key1", jwt.SigningMethodRS256))
+		if err != nil || identity.EventName != event {
+			t.Fatalf("existing trigger rejected: %s %v", event, err)
+		}
+	}
 	cases := []struct {
 		name   string
 		change func(jwt.MapClaims)

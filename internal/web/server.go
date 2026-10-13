@@ -60,7 +60,21 @@ type page struct {
 
 func New(service Service, auth Auth) *Server {
 	funcs := template.FuncMap{
-		"usd": money,
+		"usd":      money,
+		"measured": measured,
+		"measuredCost": func(n *int64) string {
+			if n == nil {
+				return "Unavailable"
+			}
+			return "$" + money(*n)
+		},
+		"runCost": func(r core.Run) string {
+			if r.Agent.Mode == "observe" && !r.EstimatedCostAvailable {
+				return "Unavailable"
+			}
+			return "$" + money(r.CostMicros)
+		},
+		"runTokens": runTokens,
 		"date": func(t time.Time) string {
 			if t.IsZero() {
 				return "—"
@@ -200,7 +214,7 @@ func (s *Server) saveAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a := core.Agent{ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), ContinuationWorkflow: strings.TrimSpace(r.FormValue("continuation_workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, BudgetMicros: budget, Enabled: r.FormValue("enabled") == "on", Version: version}
+	a := core.Agent{ID: r.PathValue("id"), Mode: strings.TrimSpace(r.FormValue("mode")), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), ContinuationWorkflow: strings.TrimSpace(r.FormValue("continuation_workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, BudgetMicros: budget, Enabled: r.FormValue("enabled") == "on", Version: version}
 	if err := core.ValidateAgent(a); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -345,4 +359,32 @@ func parseMoney(raw string) (int64, error) {
 		return 0, invalid
 	}
 	return value, nil
+}
+
+func measured(n *int64) string {
+	if n == nil {
+		return "Unavailable"
+	}
+	return strconv.FormatInt(*n, 10)
+}
+func runTokens(r core.Run, kind string) string {
+	if r.Agent.Mode != "observe" {
+		if kind == "input" {
+			return strconv.FormatInt(r.InputTokens, 10)
+		}
+		return strconv.FormatInt(r.OutputTokens, 10)
+	}
+	if r.ClaudeUsage == nil {
+		return "Unavailable"
+	}
+	switch kind {
+	case "input":
+		return measured(r.ClaudeUsage.InputTokens)
+	case "output":
+		return measured(r.ClaudeUsage.OutputTokens)
+	case "cacheRead":
+		return measured(r.ClaudeUsage.CacheReadTokens)
+	default:
+		return measured(r.ClaudeUsage.CacheCreationTokens)
+	}
 }

@@ -25,10 +25,27 @@ type API struct {
 }
 
 func (a *API) Register(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/agents/{id}/observations", a.observation)
 	mux.HandleFunc("POST /api/runs/{id}/events", a.events)
 	mux.HandleFunc("GET /api/approvals/{id}", a.approval)
 	mux.HandleFunc("POST /api/approvals/{id}/execute", a.execute)
 	mux.HandleFunc("POST /api/github/webhook", a.webhook)
+}
+func (a *API) observation(w http.ResponseWriter, r *http.Request) {
+	identity, ok := a.identity(w, r)
+	if !ok {
+		return
+	}
+	var o core.Observation
+	if !decode(w, r, &o) {
+		return
+	}
+	run, accepted, err := a.Service.Observe(r.Context(), r.PathValue("id"), o, identity)
+	if err != nil {
+		a.failure(w, err)
+		return
+	}
+	write(w, map[string]any{"run_id": run.ID, "accepted": accepted})
 }
 func (a *API) identity(w http.ResponseWriter, r *http.Request) (core.Identity, bool) {
 	header := r.Header.Get("Authorization")

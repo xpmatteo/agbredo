@@ -1,8 +1,10 @@
 # Agbredo — Agent Fleet Control Plane
 
-Agbredo is a single Go application with PostgreSQL and server-rendered HTML. It registers GitHub Actions agents, dispatches their workflows, persists events and spending, and gates a specific GitHub issue creation behind an administrator's approval.
+Agbredo is a Go control plane with PostgreSQL and server-rendered HTML. Existing agents execute Claude Code in GitHub Actions using their existing Claude Pro subscription and `CLAUDE_CODE_OAUTH_TOKEN` Actions secret. Agbredo observes execution status, available token usage, estimated API-equivalent consumption and rate-limit failures. The Go application never receives or stores Claude credentials and does not execute models.
 
-The example uses deterministic Python, calls no model, and reports zero tokens and zero model cost. An initial workflow proposes an issue and exits. An approved continuation authenticates with GitHub OIDC, retrieves the immutable proposal, and asks Agbredo to execute it through the GitHub App. Agbredo records the result. Runners never receive an issue-writing credential, so they cannot bypass the approval by using that credential themselves.
+Start with **Observe existing workflows**. The [reusable reporting integration](integrations/claude-code/README.md) wraps the existing execution command with runner-local OpenTelemetry collection and GitHub OIDC reporting. Keep existing workflows, triggers, installation and authentication. No provider replacement, workflow renaming or dispatch inputs are required. Consumption estimates are not actual subscription charges; absent measurements remain unavailable. Claude Code **2.1.296** was verified locally; capability evidence and verification commands are included with the integration.
+
+The original deterministic issue-approval example remains available in optional **Managed dispatch and approvals** mode. It calls no model and reports zero model usage. Its initial workflow proposes an issue and exits; an approved continuation asks Agbredo to create the exact issue through the GitHub App. These example workflows are unchanged and are not a replacement for existing Claude Code agents.
 
 ## Local development
 
@@ -40,9 +42,9 @@ Request these repository permissions:
 
 | Permission | Access | Purpose |
 | --- | --- | --- |
-| Actions | Read and write | Dispatch workflows, inspect executions and reconcile status |
+| Actions | Read for observation; read and write for managed mode | Inspect executions; optionally dispatch managed workflows |
 | Contents | Read | Read workflow/repository information |
-| Issues | Read and write | Create the approved example issue and find its recovery marker |
+| Issues | Read and write for managed mode only | Create the approved example issue and find its recovery marker |
 | Metadata | Read | Required GitHub App repository metadata access |
 
 No organization or account permissions are needed. Install the App on only the intended agent repositories. Record the numeric installation ID from the installation settings URL (the number following `/installations/`). The installation ID is configured per agent; it is not a shared runner secret.
@@ -53,7 +55,13 @@ Generate a session secret with `openssl rand -hex 32`, set `AGBREDO_SESSION_KEY`
 
 Dashboard sessions use signed, HTTP-only cookies and expire after eight hours. HTTPS deployments also mark the cookies secure. The administrator allowlist is checked on each authenticated request; changing it requires restarting the application. Rotating `AGBREDO_SESSION_KEY` invalidates existing sessions.
 
-## Connect the example agent
+## Connect existing Claude Code agents
+
+Follow the [reporting integration setup](integrations/claude-code/README.md#minimal-workflow-change). Register the existing workflow in observation mode; leave its continuation workflow empty. Add GitHub OIDC permission alongside existing job permissions and wrap only its execution step. The Claude OAuth token stays in the existing Actions secret and runner environment. Do not add Claude credentials to the Go environment, database, workflow dispatch inputs or reporting payload.
+
+The observation threshold flags estimated API consumption only. Agents continue running normally, and workflow completion comes from GitHub lifecycle events. No actions or approvals are introduced by this mode.
+
+## Connect the optional managed example
 
 Copy these files into the repository on which you installed the App:
 
@@ -70,6 +78,7 @@ Sign in to Agbredo, open **Agents**, and register:
 | Field | Example |
 | --- | --- |
 | Name | Issue proposal agent |
+| Mode | Managed dispatch and approvals |
 | GitHub owner / repository | Your actual repository owner and name |
 | Initial workflow | `agbredo-agent.yml` |
 | Continuation workflow | `agbredo-continue.yml` |
@@ -88,7 +97,7 @@ Changing an agent's configuration after a run is launched makes its old approval
 
 ## Spending and failure recovery
 
-Costs are integer microdollar deltas (`cost_micros`; 1 USD = 1,000,000), with separate reported input/output token deltas. Stable event IDs prevent duplicate spending when events are retried. Spending greater than the snapshot budget marks the run over budget and blocks approval/execution of subsequent controlled actions. This is a cooperative mechanism; Agbredo cannot cap independent model API spending. The example truthfully reports all usage as zero.
+Estimated consumption is stored as integer microdollars (`cost_micros`; 1 USD = 1,000,000), with separate reported token counts and optional cache counters. Stable event IDs prevent duplicate accounting on retries. Actual Claude subscription charges and remaining subscription quota are unknown. Observation mode displays an advisory threshold flag and never interrupts agents. In managed mode, exceeding the snapshot budget blocks subsequent controlled actions; this cooperative mechanism cannot cap independent model consumption. The deterministic managed example reports true zero usage.
 
 Dispatch jobs are persisted alongside run creation or approval decisions, and background processing retries temporary dispatch failures. Webhooks plus polling reconcile delayed workflow states; an initial workflow ending successfully does not complete a run that is waiting for approval. A continuation that fails before claiming its action can be retried from the approval page, while its approval remains valid.
 
@@ -125,4 +134,4 @@ AGBREDO_TEST_DATABASE_URL='postgres://agbredo:agbredo-local@localhost:5432/agbre
 
 Automated tests use external GitHub test doubles. Live GitHub Actions, App OAuth and Railway deployment require your credentials and repository configuration; no live integration success is claimed here. After completing the setup above, verify a launched run receives events, rejection creates no issue, approval creates one issue, repeated continuation/execution cannot create another, and the final run and approval audit contain the expected result link. Also confirm a failed continuation can be retried before execution and an expired approval is denied.
 
-The primary routes are `/`, `/agents`, `/agents/{id}`, `/runs`, `/runs/{id}`, `/approvals`, and `/approvals/{id}`. Machine endpoints are `/api/runs/{id}/events`, `/api/approvals/{id}`, `/api/approvals/{id}/execute`, and `/api/github/webhook`.
+The primary routes are `/`, `/agents`, `/agents/{id}`, `/runs`, `/runs/{id}`, `/approvals`, and `/approvals/{id}`. Machine endpoints are `/api/agents/{id}/observations`, `/api/runs/{id}/events`, `/api/approvals/{id}`, `/api/approvals/{id}/execute`, and `/api/github/webhook`.

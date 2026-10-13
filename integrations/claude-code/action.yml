@@ -1,0 +1,58 @@
+name: Report existing Claude Code execution
+description: Observe an unchanged Claude action or existing command with runner-local telemetry and sanitized Agbredo reporting
+inputs:
+  mode:
+    description: run wraps a command; start/finish observe an unchanged uses step
+    default: run
+  action-outcome:
+    description: In finish mode, pass steps.your_claude_step.outcome (not an invented CLI exit code)
+    default: failure
+  url:
+    description: Public Agbredo HTTPS origin
+    required: true
+  agent-id:
+    description: Registered observation agent ID
+    required: true
+  command:
+    description: Existing shell command or script, executed unchanged with bash
+    required: false
+  source:
+    description: Unique stable name per invocation/job/matrix cell in this workflow attempt
+    required: true
+  report-file:
+    description: Optional destination for a sanitized report (default is under runner.temp)
+    required: false
+outputs:
+  report-file:
+    description: Sanitized report for retry in the same workflow attempt
+    value: ${{ steps.run.outputs.report-file }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        AGBREDO_URL: ${{ inputs.url }}
+        AGBREDO_AGENT_ID: ${{ inputs.agent-id }}
+        AGBREDO_REPORT_SOURCE: ${{ inputs.source }}
+        AGBREDO_EXISTING_COMMAND: ${{ inputs.command }}
+        AGBREDO_REPORT_FILE: ${{ inputs.report-file }}
+        AGBREDO_REPORTER: ${{ github.action_path }}/report.py
+        AGBREDO_SIDECAR: ${{ github.action_path }}/sidecar.py
+        AGBREDO_REPORT_MODE: ${{ inputs.mode }}
+        AGBREDO_ACTION_OUTCOME: ${{ inputs.action-outcome }}
+      run: |
+        report_file="${AGBREDO_REPORT_FILE:-${RUNNER_TEMP}/agbredo-${GITHUB_JOB}-${AGBREDO_REPORT_SOURCE}.json}"
+        echo "report-file=$report_file" >> "$GITHUB_OUTPUT"
+        case "$AGBREDO_REPORT_MODE" in
+          run)
+            test -n "$AGBREDO_EXISTING_COMMAND"
+            python3 "$AGBREDO_REPORTER" --source "$AGBREDO_REPORT_SOURCE" --output "$report_file" \
+              -- bash -e -o pipefail -c "$AGBREDO_EXISTING_COMMAND"
+            ;;
+          start|finish)
+            python3 "$AGBREDO_SIDECAR" "$AGBREDO_REPORT_MODE" --source "$AGBREDO_REPORT_SOURCE" \
+              --state "$report_file.state" --output "$report_file" --action-outcome "$AGBREDO_ACTION_OUTCOME"
+            ;;
+          *) echo "::error::Unknown Agbredo reporting mode"; exit 1 ;;
+        esac

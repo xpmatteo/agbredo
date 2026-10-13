@@ -134,6 +134,28 @@ func TestAgentFormExactCost(t *testing.T) {
 	}
 }
 
+func TestObservationDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
+	s := &testService{agent: core.Agent{ID: "agent-1", Mode: "observe", Enabled: true}, run: core.Run{ID: "run-1", Agent: core.Agent{Mode: "observe"}, Status: "running"}}
+	w := serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil)
+	if strings.Contains(w.Body.String(), "Launch workflow") || !strings.Contains(w.Body.String(), "Observe existing workflows") {
+		t.Fatal("observation UI offered dispatch", w.Body.String())
+	}
+	w = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil)
+	for _, text := range []string{"Unavailable", "Actual subscription charges unknown", "Observation only; execution remains in GitHub Actions"} {
+		if !strings.Contains(w.Body.String(), text) {
+			t.Fatalf("missing usage distinction: %s", text)
+		}
+	}
+	zero := int64(0)
+	s.run.ClaudeUsage = &core.ClaudeUsage{InputTokens: &zero}
+	s.run.EstimatedCostAvailable = true
+	s.events = []core.Event{{Type: "claude.execution", Claude: &core.Observation{Version: "2.1.296", Phase: "finished", ExitCode: new(int), Usage: s.run.ClaudeUsage, EstimatedCostMicros: &zero}}}
+	w = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil)
+	if !strings.Contains(w.Body.String(), "Exit 0") || !strings.Contains(w.Body.String(), "API-equivalent estimate $0.000000") {
+		t.Fatal("measured zero or CLI status lost", w.Body.String())
+	}
+}
+
 func TestPagesEscapeUntrustedContent(t *testing.T) {
 	now := time.Now()
 	s := &testService{agent: core.Agent{ID: "agent", Name: "Example", Version: 1}, run: core.Run{ID: "run", Agent: core.Agent{Name: "Example"}}, approval: core.Approval{ID: "approval", RunID: "run", Status: "pending", ExpiresAt: now.Add(time.Hour), Proposal: core.Proposal{Title: "<script>alert(1)</script>", Body: "<img src=x onerror=alert(1)>"}}, events: []core.Event{{Message: "<script>secret()</script>"}}}

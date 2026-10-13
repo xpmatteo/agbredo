@@ -1,5 +1,7 @@
 # First milestone
 
+Current integration: existing Claude Code workflows run independently using their existing subscription OAuth secret. A runner-local composite action collects OpenTelemetry and sends typed observations using GitHub OIDC. New agents default to observation mode; Go never runs Claude or stores its credentials. Estimates of API-equivalent consumption are separate from unknown subscription charges. See `integrations/claude-code/README.md` for setup, verification evidence and limitations. The original managed approval milestone below remains optional.
+
 1. Define a PostgreSQL schema, immutable run snapshots, event IDs and approval payloads.
 2. Add GitHub App dispatch, OAuth dashboard login, and GitHub OIDC runner verification.
 3. Persist run events transactionally; reconcile webhook and polling lifecycle signals.

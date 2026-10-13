@@ -16,6 +16,9 @@ var secretPattern = regexp.MustCompile(`(?i)(bearer\s+\S+|(?:gh[pousr]_|github_p
 
 func Redact(s string) string { return secretPattern.ReplaceAllString(s, "[REDACTED]") }
 func ValidateAgent(a Agent) error {
+	if a.Mode != "" && a.Mode != "managed" && a.Mode != "observe" {
+		return fmt.Errorf("agent mode must be observe or managed")
+	}
 	if strings.TrimSpace(a.Name) == "" || len(a.Name) > 120 {
 		return fmt.Errorf("name must contain 1–120 characters")
 	}
@@ -25,7 +28,7 @@ func ValidateAgent(a Agent) error {
 	if !owner.MatchString(a.Owner) || !slug.MatchString(a.Repository) || len(a.Owner) > 39 || len(a.Repository) > 100 || a.Repository == "." || a.Repository == ".." {
 		return fmt.Errorf("provide a valid GitHub owner and repository")
 	}
-	if !file.MatchString(a.Workflow) || !file.MatchString(a.ContinuationWorkflow) || a.Workflow == a.ContinuationWorkflow {
+	if !file.MatchString(a.Workflow) || (a.Mode != "observe" && (!file.MatchString(a.ContinuationWorkflow) || a.Workflow == a.ContinuationWorkflow)) {
 		return fmt.Errorf("provide distinct initial and continuation workflow filenames ending in .yml or .yaml")
 	}
 	if !validRef(a.Ref) {

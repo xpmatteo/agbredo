@@ -75,7 +75,7 @@ func convert(r *gh.WorkflowRun, workflow string) core.WorkflowRun {
 	if r.GetPath() != "" {
 		workflow = path.Base(strings.SplitN(r.GetPath(), "@", 2)[0])
 	}
-	return core.WorkflowRun{ID: r.GetID(), URL: r.GetHTMLURL(), Title: r.GetDisplayTitle(), Status: r.GetStatus(), Conclusion: r.GetConclusion(), Workflow: workflow, Ref: r.GetHeadBranch()}
+	return core.WorkflowRun{Attempt: int64(r.GetRunAttempt()), ID: r.GetID(), URL: r.GetHTMLURL(), Title: r.GetDisplayTitle(), Status: r.GetStatus(), Conclusion: r.GetConclusion(), Workflow: workflow, Ref: r.GetHeadBranch()}
 }
 
 func (b *Backend) GetRun(ctx context.Context, a core.Agent, id int64) (core.WorkflowRun, error) {
@@ -92,6 +92,26 @@ func (b *Backend) GetRun(ctx context.Context, a core.Agent, id int64) (core.Work
 		w, _, err := c.Actions.GetWorkflowByID(ctx, a.Owner, a.Repository, r.GetWorkflowID())
 		if err != nil {
 			return core.WorkflowRun{}, fmt.Errorf("get GitHub workflow identity: %w", err)
+		}
+		workflow = path.Base(w.GetPath())
+	}
+	return convert(r, workflow), nil
+}
+
+func (b *Backend) GetRunAttempt(ctx context.Context, a core.Agent, id int64, attempt int64) (core.WorkflowRun, error) {
+	c, err := b.client(a.InstallationID)
+	if err != nil {
+		return core.WorkflowRun{}, err
+	}
+	r, _, err := c.Actions.GetWorkflowRunAttempt(ctx, a.Owner, a.Repository, id, int(attempt), nil)
+	if err != nil {
+		return core.WorkflowRun{}, fmt.Errorf("get GitHub workflow attempt: %w", err)
+	}
+	workflow := ""
+	if r.GetPath() == "" {
+		w, _, e := c.Actions.GetWorkflowByID(ctx, a.Owner, a.Repository, r.GetWorkflowID())
+		if e != nil {
+			return core.WorkflowRun{}, e
 		}
 		workflow = path.Base(w.GetPath())
 	}

@@ -39,6 +39,9 @@ func (f *fakeBackend) GetRun(_ context.Context, _ Agent, id int64) (WorkflowRun,
 	}
 	return r, nil
 }
+func (f *fakeBackend) GetRunAttempt(ctx context.Context, a Agent, id int64, attempt int64) (WorkflowRun, error) {
+	return f.GetRun(ctx, a, id)
+}
 func (f *fakeBackend) FindRuns(_ context.Context, _ Agent, title string, _ time.Time) ([]WorkflowRun, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

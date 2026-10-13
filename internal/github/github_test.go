@@ -111,6 +111,19 @@ func TestGetRunWorkflowIdentity(t *testing.T) {
 	}
 }
 
+func TestGetHistoricalWorkflowAttempt(t *testing.T) {
+	b := mockBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/o/r/actions/runs/123/attempts/2" {
+			t.Errorf("wrong attempt endpoint: %s", r.URL.Path)
+		}
+		w.Write([]byte(`{"id":123,"run_attempt":2,"path":".github/workflows/existing.yml","head_branch":"main","status":"completed","conclusion":"failure"}`))
+	})
+	run, err := b.GetRunAttempt(context.Background(), core.Agent{Owner: "o", Repository: "r"}, 123, 2)
+	if err != nil || run.Attempt != 2 || run.Workflow != "existing.yml" || run.Conclusion != "failure" {
+		t.Fatalf("historical attempt not retained: %#v %v", run, err)
+	}
+}
+
 func TestIssueRecoveryPaginatesClosedIssues(t *testing.T) {
 	calls := 0
 	b := mockBackend(t, func(w http.ResponseWriter, r *http.Request) {

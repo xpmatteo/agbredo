@@ -68,6 +68,7 @@ func (s *Service) DispatchOne(ctx context.Context) error {
 	workflow := r.Agent.Workflow
 	current, currentErr := s.Agent(ctx, r.Agent.ID)
 	valid := currentErr == nil && current.Enabled && current.Version == r.Agent.Version && !Terminal(r.Status)
+	valid = valid && r.Agent.Mode != "observe" && current.Mode != "observe"
 	if j.ApprovalID != nil {
 		a, e := s.Approval(ctx, *j.ApprovalID)
 		if e != nil {
@@ -156,6 +157,12 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 			return nil
 		}
 	}
+	if r.Agent.Mode == "observe" {
+		if err = applyObservedLifecycle(ctx, tx, r, gh); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
 	initialTitle := "agbredo:" + r.CorrelationID + ":initial"
 	var a Approval
 	continuation := gh.Title != initialTitle
@@ -234,6 +241,31 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 }
 
 func (s *Service) Webhook(ctx context.Context, delivery, repository string, ghID int64, title string) error {
+	// Existing run names carry no Agbredo correlation. Only registered, previously
+	// reported workflow attempts can be updated through this observation path.
+	rows, err := s.DB.Query(ctx, "SELECT document FROM runs WHERE document->'agent'->>'mode'='observe' AND document->>'github_run_id'=$1", fmt.Sprint(ghID))
+	if err != nil {
+		return err
+	}
+	observed, err := collect[Run](rows)
+	if err != nil {
+		return err
+	}
+	for _, r := range observed {
+		if repository != r.Agent.Owner+"/"+r.Agent.Repository {
+			continue
+		}
+		gh, e := s.Backend.GetRun(ctx, r.Agent, ghID)
+		if e != nil {
+			return e
+		}
+		if gh.Attempt != r.RunAttempt {
+			continue
+		}
+		if e = s.ApplyLifecycle(ctx, r.ID, gh, delivery); e != nil {
+			return e
+		}
+	}
 	pieces := strings.Split(title, ":")
 	if len(pieces) < 3 || pieces[0] != "agbredo" {
 		return nil
@@ -305,6 +337,16 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	}
 	for _, r := range f.Runs {
 		if Terminal(r.Status) {
+			continue
+		}
+		if r.Agent.Mode == "observe" {
+			gh, e := s.Backend.GetRunAttempt(ctx, r.Agent, r.GitHubRunID, r.RunAttempt)
+			if e != nil {
+				continue
+			}
+			if e = s.ApplyLifecycle(ctx, r.ID, gh, ""); e != nil {
+				return e
+			}
 			continue
 		}
 		if r.GitHubRunID == 0 {

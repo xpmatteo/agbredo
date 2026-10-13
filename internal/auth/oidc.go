@@ -140,7 +140,7 @@ func (o *OIDC) Verify(ctx context.Context, raw string) (core.Identity, error) {
 	if !claims.ExpiresAt.After(now) || claims.IssuedAt.After(now.Add(30*time.Second)) || claims.IssuedAt.Before(now.Add(-10*time.Minute)) || claims.ExpiresAt.Sub(claims.IssuedAt.Time) > 10*time.Minute || !claims.ExpiresAt.After(claims.IssuedAt.Time) {
 		return fail()
 	}
-	if claims.EventName != "workflow_dispatch" || claims.Repository == "" || len(strings.Split(claims.Repository, "/")) != 2 || !strings.HasPrefix(claims.Ref, "refs/") {
+	if claims.EventName == "" || claims.EventName == "pull_request" || claims.EventName == "pull_request_target" || claims.Repository == "" || len(strings.Split(claims.Repository, "/")) != 2 || !strings.HasPrefix(claims.Ref, "refs/") {
 		return fail()
 	}
 	prefix := claims.Repository + "/.github/workflows/"
@@ -165,5 +165,5 @@ func (o *OIDC) Verify(ctx context.Context, raw string) (core.Identity, error) {
 	if err != nil || attempt <= 0 {
 		return fail()
 	}
-	return core.Identity{Repository: claims.Repository, Workflow: workflow, Ref: claims.Ref, RunID: runID, RunAttempt: attempt}, nil
+	return core.Identity{EventName: claims.EventName, Repository: claims.Repository, Workflow: workflow, Ref: claims.Ref, RunID: runID, RunAttempt: attempt}, nil
 }

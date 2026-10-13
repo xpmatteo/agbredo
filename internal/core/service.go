@@ -92,6 +92,9 @@ func (s *Service) Launch(ctx context.Context, id, actor string) (Run, error) {
 	if !a.Enabled {
 		return Run{}, fmt.Errorf("agent is disabled: %w", ErrConflict)
 	}
+	if a.Mode == "observe" {
+		return Run{}, fmt.Errorf("observation agents run through their existing GitHub triggers: %w", ErrConflict)
+	}
 	r := Run{ID: ID(), CorrelationID: ID(), Agent: a, Status: "queued", BudgetMicros: a.BudgetMicros, CreatedAt: now(), UpdatedAt: now()}
 	if _, err = tx.Exec(ctx, "INSERT INTO runs(id,agent_id,correlation_id,status,document) VALUES($1,$2,$3,$4,$5)", r.ID, a.ID, r.CorrelationID, r.Status, mustJSON(r)); err != nil {
 		return r, err
@@ -154,6 +157,9 @@ func (s *Service) Events(ctx context.Context, id string) ([]Event, error) {
 }
 
 func (s *Service) verifyRunner(ctx context.Context, r Run, a *Approval, identity Identity) error {
+	if r.Agent.Mode == "observe" || (identity.EventName != "" && identity.EventName != "workflow_dispatch") {
+		return ErrUnauthorized
+	}
 	workflow := r.Agent.Workflow
 	title := "agbredo:" + r.CorrelationID + ":initial"
 	if a != nil {
@@ -184,6 +190,9 @@ func bindInitial(r *Run, identity Identity) error {
 	return nil
 }
 func (s *Service) Ingest(ctx context.Context, id string, e Event, identity Identity) (bool, error) {
+	if e.Claude != nil {
+		return false, invalid("Claude reporting uses the observation endpoint")
+	}
 	snapshot, err := s.Run(ctx, id)
 	if err != nil {
 		return false, err
