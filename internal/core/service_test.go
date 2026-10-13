@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"agbredo/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"rilian/internal/store"
 )
 
 type fakeBackend struct {
@@ -112,16 +112,16 @@ func TestSecretsRedaction(t *testing.T) {
 // Each test receives a private schema; an existing database's tables are never reset.
 func testService(t *testing.T) (*Service, *fakeBackend) {
 	t.Helper()
-	url := os.Getenv("RILIAN_TEST_DATABASE_URL")
+	url := os.Getenv("AGBREDO_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("set RILIAN_TEST_DATABASE_URL to run real PostgreSQL integration tests")
+		t.Skip("set AGBREDO_TEST_DATABASE_URL to run real PostgreSQL integration tests")
 	}
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema := "rilian_test_" + ID()
+	schema := "agbredo_test_" + ID()
 	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
 		admin.Close()
 		t.Fatal(err)
@@ -151,7 +151,7 @@ func testService(t *testing.T) (*Service, *fakeBackend) {
 		t.Fatal("repeat migration", err)
 	}
 	fake := &fakeBackend{workflows: map[int64]WorkflowRun{}, issues: map[string]string{}}
-	return &Service{DB: pool, Backend: fake, BaseURL: "https://rilian.example", ApprovalTTL: time.Hour, Admins: []string{"admin"}}, fake
+	return &Service{DB: pool, Backend: fake, BaseURL: "https://agbredo.example", ApprovalTTL: time.Hour, Admins: []string{"admin"}}, fake
 }
 func launched(t *testing.T, s *Service, f *fakeBackend) (Run, Identity) {
 	t.Helper()
@@ -163,7 +163,7 @@ func launched(t *testing.T, s *Service, f *fakeBackend) (Run, Identity) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.put(WorkflowRun{ID: 100, Title: "rilian:" + r.CorrelationID + ":initial", Workflow: a.Workflow, Ref: "main", Status: "in_progress", URL: "https://github.com/acme/agent/actions/runs/100"})
+	f.put(WorkflowRun{ID: 100, Title: "agbredo:" + r.CorrelationID + ":initial", Workflow: a.Workflow, Ref: "main", Status: "in_progress", URL: "https://github.com/acme/agent/actions/runs/100"})
 	return r, Identity{Repository: "acme/agent", Workflow: a.Workflow, Ref: "refs/heads/main", RunID: 100, RunAttempt: 1}
 }
 func proposed(t *testing.T, s *Service, f *fakeBackend) (Run, Approval, Identity) {
@@ -178,7 +178,7 @@ func proposed(t *testing.T, s *Service, f *fakeBackend) (Run, Approval, Identity
 		t.Fatal(err)
 	}
 	a := fleet.Approvals[0]
-	f.put(WorkflowRun{ID: 200, Title: "rilian:" + r.CorrelationID + ":approval:" + a.ID, Workflow: r.Agent.ContinuationWorkflow, Ref: "main", Status: "in_progress"})
+	f.put(WorkflowRun{ID: 200, Title: "agbredo:" + r.CorrelationID + ":approval:" + a.ID, Workflow: r.Agent.ContinuationWorkflow, Ref: "main", Status: "in_progress"})
 	ci := Identity{Repository: i.Repository, Workflow: r.Agent.ContinuationWorkflow, Ref: i.Ref, RunID: 200, RunAttempt: 1}
 	return r, a, ci
 }
@@ -309,7 +309,7 @@ func TestDatabaseOutOfOrderEventsAndCorrelation(t *testing.T) {
 	}
 	wrong := gh
 	wrong.ID = 999
-	wrong.Title = "rilian:other:initial"
+	wrong.Title = "agbredo:other:initial"
 	if err := s.ApplyLifecycle(ctx, r.ID, wrong, ""); !errors.Is(err, ErrUnauthorized) && !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}

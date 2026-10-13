@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"rilian/internal/core"
-	gh "rilian/internal/github"
+	"agbredo/internal/core"
+	gh "agbredo/internal/github"
 )
 
 type Verifier interface {
@@ -74,7 +74,7 @@ func (a *API) failure(w http.ResponseWriter, err error) {
 		http.Error(w, core.Redact(err.Error()), 409)
 	default:
 		a.Logger.Error("runner request failed", "error", core.Redact(err.Error()))
-		http.Error(w, "Request failed; inspect Rilian run history and server logs", 500)
+		http.Error(w, "Request failed; inspect Agbredo run history and server logs", 500)
 	}
 }
 func (a *API) events(w http.ResponseWriter, r *http.Request) {

@@ -44,16 +44,16 @@ type contextKey struct{}
 func New(c Config) (*Auth, error) {
 	u, err := url.Parse(c.BaseURL)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return nil, errors.New("RILIAN_BASE_URL must be an absolute origin URL")
+		return nil, errors.New("AGBREDO_BASE_URL must be an absolute origin URL")
 	}
 	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1")) {
-		return nil, errors.New("RILIAN_BASE_URL must use HTTPS (HTTP is allowed on localhost)")
+		return nil, errors.New("AGBREDO_BASE_URL must use HTTPS (HTTP is allowed on localhost)")
 	}
 	if c.ClientID == "" || c.ClientSecret == "" {
 		return nil, errors.New("GitHub OAuth client ID and secret are required")
 	}
 	if len(c.SessionKey) < 32 {
-		return nil, errors.New("RILIAN_SESSION_KEY must contain at least 32 random characters")
+		return nil, errors.New("AGBREDO_SESSION_KEY must contain at least 32 random characters")
 	}
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	a := &Auth{config: c, admins: map[string]bool{}, secure: u.Scheme == "https", client: &http.Client{Timeout: 15 * time.Second}, oauthURL: "https://github.com/login/oauth/authorize", tokenURL: "https://github.com/login/oauth/access_token", userURL: "https://api.github.com/user"}
@@ -63,7 +63,7 @@ func New(c Config) (*Auth, error) {
 		}
 	}
 	if len(a.admins) == 0 {
-		return nil, errors.New("RILIAN_ADMIN_USERS must explicitly allow at least one GitHub login")
+		return nil, errors.New("AGBREDO_ADMIN_USERS must explicitly allow at least one GitHub login")
 	}
 	return a, nil
 }
@@ -114,15 +114,15 @@ func (a *Auth) Register(mux *http.ServeMux) {
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	state := oauthState{State: randomToken(), Verifier: randomToken(), Expires: time.Now().Add(10 * time.Minute).Unix()}
-	a.cookie(w, "rilian_oauth", a.encode(state), 600)
+	a.cookie(w, "agbredo_oauth", a.encode(state), 600)
 	sum := sha256.Sum256([]byte(state.Verifier))
 	q := url.Values{"client_id": {a.config.ClientID}, "redirect_uri": {a.config.BaseURL + "/auth/callback"}, "state": {state.State}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"}, "allow_signup": {"false"}}
 	http.Redirect(w, r, a.oauthURL+"?"+q.Encode(), http.StatusSeeOther)
 }
 func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	c, err := r.Cookie("rilian_oauth")
-	a.cookie(w, "rilian_oauth", "", -1)
+	c, err := r.Cookie("agbredo_oauth")
+	a.cookie(w, "agbredo_oauth", "", -1)
 	var state oauthState
 	if err != nil || !a.decode(c.Value, &state) || state.Expires <= time.Now().Unix() || len(state.State) < 32 || subtle.ConstantTimeCompare([]byte(state.State), []byte(r.URL.Query().Get("state"))) != 1 {
 		http.Error(w, "GitHub login state is invalid or expired; sign in again", http.StatusBadRequest)
@@ -175,16 +175,16 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	err = json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&user)
 	resp.Body.Close()
 	if err != nil || resp.StatusCode != http.StatusOK || user.ID <= 0 || !a.admins[strings.ToLower(user.Login)] {
-		http.Error(w, "Your GitHub account is not in Rilian's administrator allowlist", http.StatusForbidden)
+		http.Error(w, "Your GitHub account is not in Agbredo's administrator allowlist", http.StatusForbidden)
 		return
 	}
 	s := session{Login: user.Login, CSRF: randomToken(), Expires: time.Now().Add(8 * time.Hour).Unix()}
-	a.cookie(w, "rilian_session", a.encode(s), 8*60*60)
+	a.cookie(w, "agbredo_session", a.encode(s), 8*60*60)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 func (a *Auth) RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie("rilian_session")
+		c, err := r.Cookie("agbredo_session")
 		var s session
 		if err != nil || !a.decode(c.Value, &s) || s.Expires <= time.Now().Unix() || s.CSRF == "" || !a.admins[strings.ToLower(s.Login)] {
 			if r.Method == http.MethodGet {
@@ -228,6 +228,6 @@ func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}
-	a.cookie(w, "rilian_session", "", -1)
+	a.cookie(w, "agbredo_session", "", -1)
 	http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 }

@@ -1,9 +1,9 @@
 package store
 
 import (
+	"agbredo/migrations"
 	"context"
 	"fmt"
-	"rilian/migrations"
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"

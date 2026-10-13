@@ -1,4 +1,4 @@
-module rilian
+module agbredo
 
 go 1.26.5
 

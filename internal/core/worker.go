@@ -64,7 +64,7 @@ func (s *Service) DispatchOne(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	inputs := map[string]interface{}{"rilian_run_id": r.ID, "rilian_correlation_id": r.CorrelationID, "rilian_url": s.BaseURL}
+	inputs := map[string]interface{}{"agbredo_run_id": r.ID, "agbredo_correlation_id": r.CorrelationID, "agbredo_url": s.BaseURL}
 	workflow := r.Agent.Workflow
 	current, currentErr := s.Agent(ctx, r.Agent.ID)
 	valid := currentErr == nil && current.Enabled && current.Version == r.Agent.Version && !Terminal(r.Status)
@@ -75,8 +75,8 @@ func (s *Service) DispatchOne(ctx context.Context) error {
 		}
 		valid = valid && a.Status == "approved" && a.AttemptedAt == nil && a.ExpiresAt.After(now()) && !r.OverBudget
 		workflow = r.Agent.ContinuationWorkflow
-		inputs["rilian_approval_id"] = a.ID
-		inputs["rilian_payload_hash"] = a.PayloadHash
+		inputs["agbredo_approval_id"] = a.ID
+		inputs["agbredo_payload_hash"] = a.PayloadHash
 	}
 	if !valid {
 		_, err = s.DB.Exec(ctx, "UPDATE dispatch_jobs SET finished=true,lease_until=NULL,last_error='run, agent, or approval is no longer dispatchable' WHERE id=$1", j.ID)
@@ -84,9 +84,9 @@ func (s *Service) DispatchOne(ctx context.Context) error {
 	}
 	// Dispatch can time out after GitHub accepted it. Look for its correlation before retrying.
 	if j.Attempts > 0 {
-		title := "rilian:" + r.CorrelationID + ":initial"
+		title := "agbredo:" + r.CorrelationID + ":initial"
 		if j.ApprovalID != nil {
-			title = "rilian:" + r.CorrelationID + ":approval:" + *j.ApprovalID
+			title = "agbredo:" + r.CorrelationID + ":approval:" + *j.ApprovalID
 		}
 		items, e := s.Backend.FindRuns(ctx, r.Agent, title, r.CreatedAt)
 		if e != nil {
@@ -156,7 +156,7 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 			return nil
 		}
 	}
-	initialTitle := "rilian:" + r.CorrelationID + ":initial"
+	initialTitle := "agbredo:" + r.CorrelationID + ":initial"
 	var a Approval
 	continuation := gh.Title != initialTitle
 	if continuation {
@@ -167,7 +167,7 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 		if ignoredRun(a, gh.ID) {
 			return ErrUnauthorized
 		}
-		if gh.Title != "rilian:"+r.CorrelationID+":approval:"+a.ID || gh.Workflow != r.Agent.ContinuationWorkflow {
+		if gh.Title != "agbredo:"+r.CorrelationID+":approval:"+a.ID || gh.Workflow != r.Agent.ContinuationWorkflow {
 			return ErrUnauthorized
 		}
 		if a.GitHubRunID != 0 && a.GitHubRunID != gh.ID {
@@ -235,7 +235,7 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 
 func (s *Service) Webhook(ctx context.Context, delivery, repository string, ghID int64, title string) error {
 	pieces := strings.Split(title, ":")
-	if len(pieces) < 3 || pieces[0] != "rilian" {
+	if len(pieces) < 3 || pieces[0] != "agbredo" {
 		return nil
 	}
 	r, err := readJSON[Run](ctx, s.DB, "SELECT document FROM runs WHERE correlation_id=$1", pieces[1])
@@ -308,7 +308,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			continue
 		}
 		if r.GitHubRunID == 0 {
-			items, e := s.Backend.FindRuns(ctx, r.Agent, "rilian:"+r.CorrelationID+":initial", r.CreatedAt)
+			items, e := s.Backend.FindRuns(ctx, r.Agent, "agbredo:"+r.CorrelationID+":initial", r.CreatedAt)
 			if e != nil {
 				continue
 			}
@@ -337,7 +337,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 				continue
 			}
 			if a.GitHubRunID == 0 {
-				items, e := s.Backend.FindRuns(ctx, r.Agent, "rilian:"+r.CorrelationID+":approval:"+a.ID, a.CreatedAt)
+				items, e := s.Backend.FindRuns(ctx, r.Agent, "agbredo:"+r.CorrelationID+":approval:"+a.ID, a.CreatedAt)
 				items = eligibleRuns(items, a)
 				if e == nil && len(items) > 0 {
 					_ = s.ApplyLifecycle(ctx, r.ID, items[0], "")

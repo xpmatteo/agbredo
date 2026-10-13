@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"rilian/internal/core"
+	"agbredo/internal/core"
 )
 
 type fakeVerifier struct {

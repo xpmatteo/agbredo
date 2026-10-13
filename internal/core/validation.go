@@ -61,7 +61,7 @@ func validateProposal(p Proposal, a Agent) error {
 	if strings.TrimSpace(p.Title) == "" || len(p.Title) > 200 || len(p.Body) > 12000 {
 		return fmt.Errorf("issue title or body exceeds limits")
 	}
-	if strings.Contains(p.Body, "rilian-approval:") {
+	if strings.Contains(p.Body, "agbredo-approval:") {
 		return fmt.Errorf("proposal cannot contain reserved execution markers")
 	}
 	if Redact(p.Body) != p.Body || Redact(p.Title) != p.Title {

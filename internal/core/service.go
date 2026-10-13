@@ -155,13 +155,13 @@ func (s *Service) Events(ctx context.Context, id string) ([]Event, error) {
 
 func (s *Service) verifyRunner(ctx context.Context, r Run, a *Approval, identity Identity) error {
 	workflow := r.Agent.Workflow
-	title := "rilian:" + r.CorrelationID + ":initial"
+	title := "agbredo:" + r.CorrelationID + ":initial"
 	if a != nil {
 		if ignoredRun(*a, identity.RunID) {
 			return ErrUnauthorized
 		}
 		workflow = r.Agent.ContinuationWorkflow
-		title = "rilian:" + r.CorrelationID + ":approval:" + a.ID
+		title = "agbredo:" + r.CorrelationID + ":approval:" + a.ID
 	}
 	if identity.Repository != r.Agent.Owner+"/"+r.Agent.Repository || identity.Workflow != workflow || !refMatches(r.Agent.Ref, identity.Ref) || identity.RunID <= 0 {
 		return ErrUnauthorized
@@ -495,7 +495,7 @@ func (s *Service) Execute(ctx context.Context, id, runID, correlation, hash stri
 	defer cancel()
 	if createErr != nil {
 		_ = s.finishExecution(finishCtx, id, "", false)
-		return a, fmt.Errorf("issue creation outcome is uncertain; Rilian will reconcile without repeating creation")
+		return a, fmt.Errorf("issue creation outcome is uncertain; Agbredo will reconcile without repeating creation")
 	}
 	if err = s.finishExecution(finishCtx, id, url, true); err != nil {
 		return a, err

@@ -3,7 +3,7 @@
 !.env.example
 *.pem
 *.key
-/rilian
+/agbredo
 __pycache__/
 *.pyc
 .DS_Store

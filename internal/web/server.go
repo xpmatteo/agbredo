@@ -1,4 +1,4 @@
-// Package web implements Rilian's server-rendered administration dashboard.
+// Package web implements Agbredo's server-rendered administration dashboard.
 package web
 
 import (
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"rilian/internal/core"
+	"agbredo/internal/core"
 )
 
 //go:embed templates.html style.css
@@ -145,7 +145,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	p := page{Title: "Rilian — Agent Fleet Control Plane", Fleet: f}
+	p := page{Title: "Agbredo — Agent Fleet Control Plane", Fleet: f}
 	for _, run := range f.Runs {
 		switch run.Status {
 		case "queued", "running", "waiting_approval":
@@ -169,7 +169,7 @@ func (s *Server) agents(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "agents", page{Title: "Agent registry", Fleet: f, Agent: core.Agent{Ref: "main", Workflow: "rilian-agent.yml", ContinuationWorkflow: "rilian-continue.yml", Enabled: true}})
+	s.render(w, r, "agents", page{Title: "Agent registry", Fleet: f, Agent: core.Agent{Ref: "main", Workflow: "agbredo-agent.yml", ContinuationWorkflow: "agbredo-continue.yml", Enabled: true}})
 }
 
 func (s *Server) agent(w http.ResponseWriter, r *http.Request) {

@@ -7,14 +7,14 @@ import agent
 
 
 ENV = {
-    "RILIAN_URL": "https://rilian.example.test",
-    "RILIAN_RUN_ID": "run-1",
-    "RILIAN_CORRELATION_ID": "correlation-1",
+    "AGBREDO_URL": "https://agbredo.example.test",
+    "AGBREDO_RUN_ID": "run-1",
+    "AGBREDO_CORRELATION_ID": "correlation-1",
     "GITHUB_REPOSITORY": "owner/repo",
     "GITHUB_RUN_ID": "42",
     "GITHUB_RUN_ATTEMPT": "1",
-    "RILIAN_APPROVAL_ID": "approval-1",
-    "RILIAN_PAYLOAD_HASH": "immutable-hash",
+    "AGBREDO_APPROVAL_ID": "approval-1",
+    "AGBREDO_PAYLOAD_HASH": "immutable-hash",
 }
 
 
@@ -70,7 +70,7 @@ class ExampleTests(unittest.TestCase):
 
     def test_public_https_required(self):
         for url in ("http://localhost:8080", "https://user:password@example.test", "https://example.test?q=1"):
-            with self.subTest(url=url), patch.dict(os.environ, {"RILIAN_URL": url}):
+            with self.subTest(url=url), patch.dict(os.environ, {"AGBREDO_URL": url}):
                 with self.assertRaises(agent.AgentError):
                     agent.Client()
 

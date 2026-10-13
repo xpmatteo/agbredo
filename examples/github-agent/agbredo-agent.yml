@@ -1,19 +1,19 @@
-name: Rilian example agent
-run-name: "rilian:${{ inputs.rilian_correlation_id }}:initial"
+name: Agbredo example agent
+run-name: "agbredo:${{ inputs.agbredo_correlation_id }}:initial"
 
 on:
   workflow_dispatch:
     inputs:
-      rilian_run_id:
-        description: Rilian run ID
+      agbredo_run_id:
+        description: Agbredo run ID
         required: true
         type: string
-      rilian_correlation_id:
-        description: Rilian correlation ID
+      agbredo_correlation_id:
+        description: Agbredo correlation ID
         required: true
         type: string
-      rilian_url:
-        description: Public HTTPS URL of Rilian
+      agbredo_url:
+        description: Public HTTPS URL of Agbredo
         required: true
         type: string
 
@@ -22,7 +22,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "rilian-initial-${{ inputs.rilian_correlation_id }}"
+  group: "agbredo-initial-${{ inputs.agbredo_correlation_id }}"
   cancel-in-progress: false
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
       - name: Publish events and propose an issue
         env:
-          RILIAN_RUN_ID: ${{ inputs.rilian_run_id }}
-          RILIAN_CORRELATION_ID: ${{ inputs.rilian_correlation_id }}
-          RILIAN_URL: ${{ inputs.rilian_url }}
+          AGBREDO_RUN_ID: ${{ inputs.agbredo_run_id }}
+          AGBREDO_CORRELATION_ID: ${{ inputs.agbredo_correlation_id }}
+          AGBREDO_URL: ${{ inputs.agbredo_url }}
         run: python3 examples/github-agent/agent.py propose

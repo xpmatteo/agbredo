@@ -30,13 +30,13 @@ def required(name):
 
 class Client:
     def __init__(self):
-        self.base_url = required("RILIAN_URL").rstrip("/")
+        self.base_url = required("AGBREDO_URL").rstrip("/")
         parsed = urllib.parse.urlsplit(self.base_url)
         if (parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment
                 or parsed.username or parsed.password):
-            raise AgentError("RILIAN_URL must be a public HTTPS URL without a query or fragment")
-        self.run_id = required("RILIAN_RUN_ID")
-        self.correlation_id = required("RILIAN_CORRELATION_ID")
+            raise AgentError("AGBREDO_URL must be a public HTTPS URL without a query or fragment")
+        self.run_id = required("AGBREDO_RUN_ID")
+        self.correlation_id = required("AGBREDO_CORRELATION_ID")
         self.opener = urllib.request.build_opener(NoRedirect())
 
     def token(self):
@@ -54,7 +54,7 @@ class Client:
         return token
 
     def call(self, method, path, payload=None):
-        # Reuse the exact payload across retries. Rilian deduplicates event IDs
+        # Reuse the exact payload across retries. Agbredo deduplicates event IDs
         # and serializes execution of each immutable approved proposal.
         body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
         for attempt in range(4):
@@ -68,12 +68,12 @@ class Client:
             except urllib.error.HTTPError as error:
                 # Do not print response bodies, credentials or headers into runner logs.
                 if error.code not in (429, 500, 502, 503, 504) or attempt == 3:
-                    raise AgentError("Rilian API rejected request (HTTP %d)" % error.code) from None
+                    raise AgentError("Agbredo API rejected request (HTTP %d)" % error.code) from None
             except (urllib.error.URLError, TimeoutError):
                 if attempt == 3:
-                    raise AgentError("Rilian API could not be reached after four attempts") from None
+                    raise AgentError("Agbredo API could not be reached after four attempts") from None
             time.sleep(2 ** attempt)
-        raise AgentError("Rilian API request failed")
+        raise AgentError("Agbredo API request failed")
 
     def event(self, phase, event_type, status="", message="", proposal=None, approval_id=None):
         event = {
@@ -97,8 +97,8 @@ def propose(client):
     proposal = {
         "action": "create_issue",
         "resource": required("GITHUB_REPOSITORY"),
-        "title": "Rilian approved agent action " + client.correlation_id,
-        "body": "This issue was proposed by the Rilian example agent.\n\n"
+        "title": "Agbredo approved agent action " + client.correlation_id,
+        "body": "This issue was proposed by the Agbredo example agent.\n\n"
                 "Run: " + client.run_id + "\nCorrelation: " + client.correlation_id + "\n\n"
                 "No model was called. Reported tokens and model cost are zero.",
     }
@@ -108,8 +108,8 @@ def propose(client):
 
 
 def continue_approved(client):
-    approval_id = required("RILIAN_APPROVAL_ID")
-    expected_hash = required("RILIAN_PAYLOAD_HASH")
+    approval_id = required("AGBREDO_APPROVAL_ID")
+    expected_hash = required("AGBREDO_PAYLOAD_HASH")
     path = "/api/approvals/" + urllib.parse.quote(approval_id, safe="")
     approval = client.call("GET", path)
     if (approval.get("id") != approval_id or approval.get("run_id") != client.run_id
@@ -125,12 +125,12 @@ def continue_approved(client):
         "payload_hash": expected_hash,
     })
     if result.get("status") != "executed" or not result.get("result_url"):
-        raise AgentError("Approved action has not completed; inspect its audit trail in Rilian")
+        raise AgentError("Approved action has not completed; inspect its audit trail in Agbredo")
     # /execute persists the authoritative result. This event adds runner logs;
     # continuation events cannot independently change the action's final state.
     client.event("completed:" + approval_id, "execution.completed", "completed",
                  "Approved issue creation completed", approval_id=approval_id)
-    print("Approved issue creation completed. Inspect the result in Rilian.")
+    print("Approved issue creation completed. Inspect the result in Agbredo.")
 
 
 def main():
@@ -152,7 +152,7 @@ def main():
                 # retains control of the execution state while this records logs.
                 client.event("error:continue", "execution.error", "failed",
                              "Continuation failed; inspect the approval audit trail",
-                             approval_id=required("RILIAN_APPROVAL_ID"))
+                             approval_id=required("AGBREDO_APPROVAL_ID"))
         except Exception:
             pass
         raise

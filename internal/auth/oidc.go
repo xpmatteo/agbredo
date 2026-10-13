@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"agbredo/internal/core"
 	"github.com/golang-jwt/jwt/v4"
-	"rilian/internal/core"
 )
 
 const issuer = "https://token.actions.githubusercontent.com"

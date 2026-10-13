@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"agbredo/internal/core"
 	gh "github.com/google/go-github/v84/github"
-	"rilian/internal/core"
 )
 
 func mockBackend(t *testing.T, h http.HandlerFunc) *Backend {
@@ -60,7 +60,7 @@ func TestDispatchAndCorrelation(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 				t.Error(err)
 			}
-			if data.Ref != "main" || data.Inputs["rilian_correlation_id"] != "unique" {
+			if data.Ref != "main" || data.Inputs["agbredo_correlation_id"] != "unique" {
 				t.Errorf("wrong dispatch: %#v", data)
 			}
 			dispatch = true
@@ -70,20 +70,20 @@ func TestDispatchAndCorrelation(t *testing.T) {
 				t.Error("missing dispatch and time filters")
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"workflow_runs":[{"id":1,"display_title":"rilian:unique:initial","head_branch":"main","status":"completed","conclusion":"success","html_url":"https://github.com/o/r/actions/runs/1"},{"id":2,"display_title":"rilian:other:initial"}]}`))
+			w.Write([]byte(`{"workflow_runs":[{"id":1,"display_title":"agbredo:unique:initial","head_branch":"main","status":"completed","conclusion":"success","html_url":"https://github.com/o/r/actions/runs/1"},{"id":2,"display_title":"agbredo:other:initial"}]}`))
 		default:
 			t.Errorf("unexpected %s", r.URL.Path)
 			w.WriteHeader(404)
 		}
 	})
 	a := core.Agent{Owner: "o", Repository: "r", Workflow: "agent.yml", ContinuationWorkflow: "agent.yml", Ref: "main"}
-	if err := b.Dispatch(context.Background(), a, a.Workflow, map[string]interface{}{"rilian_correlation_id": "unique"}); err != nil {
+	if err := b.Dispatch(context.Background(), a, a.Workflow, map[string]interface{}{"agbredo_correlation_id": "unique"}); err != nil {
 		t.Fatal(err)
 	}
 	if !dispatch {
 		t.Fatal("dispatch absent")
 	}
-	runs, err := b.FindRuns(context.Background(), a, "rilian:unique:initial", time.Now())
+	runs, err := b.FindRuns(context.Background(), a, "agbredo:unique:initial", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,10 +132,10 @@ func TestIssueRecoveryPaginatesClosedIssues(t *testing.T) {
 		}
 		if r.URL.Query().Get("page") == "1" {
 			w.Header().Set("Link", "<http://"+r.Host+r.URL.Path+"?page=2>; rel=\"next\"")
-			w.Write([]byte(`[{"body":"unrelated"},{"body":"<!-- rilian-approval:approval1 -->","pull_request":{"url":"pr"},"html_url":"wrong"}]`))
+			w.Write([]byte(`[{"body":"unrelated"},{"body":"<!-- agbredo-approval:approval1 -->","pull_request":{"url":"pr"},"html_url":"wrong"}]`))
 			return
 		}
-		w.Write([]byte(`[{"body":"<!-- rilian-approval:approval1 -->","state":"closed","html_url":"https://github.com/o/r/issues/9"}]`))
+		w.Write([]byte(`[{"body":"<!-- agbredo-approval:approval1 -->","state":"closed","html_url":"https://github.com/o/r/issues/9"}]`))
 	})
 	a := core.Agent{Owner: "o", Repository: "r"}
 	result, err := b.CreateIssue(context.Background(), a, core.Proposal{Title: "Approved", Body: "Immutable"}, "approval1")

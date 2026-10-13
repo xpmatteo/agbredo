@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"rilian/internal/core"
+	"agbredo/internal/core"
 )
 
 type testAuth struct {

@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
+	"agbredo/internal/core"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	gh "github.com/google/go-github/v84/github"
-	"rilian/internal/core"
 )
 
 type Backend struct {
@@ -133,7 +133,7 @@ func (b *Backend) FindRuns(ctx context.Context, a core.Agent, correlation string
 	return out, nil
 }
 
-func issueMarker(marker string) string { return "<!-- rilian-approval:" + marker + " -->" }
+func issueMarker(marker string) string { return "<!-- agbredo-approval:" + marker + " -->" }
 
 func (b *Backend) CreateIssue(ctx context.Context, a core.Agent, p core.Proposal, marker string) (string, error) {
 	c, err := b.client(a.InstallationID)

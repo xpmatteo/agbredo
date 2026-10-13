@@ -14,34 +14,34 @@ import (
 	"syscall"
 	"time"
 
-	"rilian/internal/auth"
-	"rilian/internal/core"
-	"rilian/internal/github"
-	"rilian/internal/store"
-	"rilian/internal/web"
-	"rilian/internal/webapi"
+	"agbredo/internal/auth"
+	"agbredo/internal/core"
+	"agbredo/internal/github"
+	"agbredo/internal/store"
+	"agbredo/internal/web"
+	"agbredo/internal/webapi"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 	if err := run(logger); err != nil {
-		logger.Error("Rilian stopped", "error", core.Redact(err.Error()))
+		logger.Error("Agbredo stopped", "error", core.Redact(err.Error()))
 		os.Exit(1)
 	}
 }
 func run(logger *slog.Logger) error {
 	if len(os.Args) != 2 || (os.Args[1] != "serve" && os.Args[1] != "migrate") {
-		return errors.New("usage: rilian serve | rilian migrate")
+		return errors.New("usage: agbredo serve | agbredo migrate")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	databaseURL := os.Getenv("RILIAN_DATABASE_URL")
+	databaseURL := os.Getenv("AGBREDO_DATABASE_URL")
 	if databaseURL == "" {
 		databaseURL = os.Getenv("DATABASE_URL")
 	}
 	if databaseURL == "" {
-		return errors.New("RILIAN_DATABASE_URL is required (Railway DATABASE_URL is also accepted)")
+		return errors.New("AGBREDO_DATABASE_URL is required (Railway DATABASE_URL is also accepted)")
 	}
 	initCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -57,39 +57,39 @@ func run(logger *slog.Logger) error {
 		logger.Info("migrations applied")
 		return nil
 	}
-	appID, err := strconv.ParseInt(os.Getenv("RILIAN_GITHUB_APP_ID"), 10, 64)
+	appID, err := strconv.ParseInt(os.Getenv("AGBREDO_GITHUB_APP_ID"), 10, 64)
 	if err != nil {
-		return errors.New("RILIAN_GITHUB_APP_ID must be a positive integer")
+		return errors.New("AGBREDO_GITHUB_APP_ID must be a positive integer")
 	}
-	key := []byte(os.Getenv("RILIAN_GITHUB_PRIVATE_KEY"))
-	if file := os.Getenv("RILIAN_GITHUB_PRIVATE_KEY_FILE"); file != "" {
+	key := []byte(os.Getenv("AGBREDO_GITHUB_PRIVATE_KEY"))
+	if file := os.Getenv("AGBREDO_GITHUB_PRIVATE_KEY_FILE"); file != "" {
 		key, err = os.ReadFile(file)
 		if err != nil {
-			return errors.New("cannot read RILIAN_GITHUB_PRIVATE_KEY_FILE")
+			return errors.New("cannot read AGBREDO_GITHUB_PRIVATE_KEY_FILE")
 		}
 	}
 	backend, err := github.New(appID, key)
 	if err != nil {
 		return err
 	}
-	baseURL := strings.TrimRight(os.Getenv("RILIAN_BASE_URL"), "/")
-	admins := strings.Split(os.Getenv("RILIAN_ADMIN_USERS"), ",")
+	baseURL := strings.TrimRight(os.Getenv("AGBREDO_BASE_URL"), "/")
+	admins := strings.Split(os.Getenv("AGBREDO_ADMIN_USERS"), ",")
 	for i := range admins {
 		admins[i] = strings.TrimSpace(admins[i])
 	}
-	login, err := auth.New(auth.Config{BaseURL: baseURL, ClientID: os.Getenv("RILIAN_GITHUB_CLIENT_ID"), ClientSecret: os.Getenv("RILIAN_GITHUB_CLIENT_SECRET"), SessionKey: os.Getenv("RILIAN_SESSION_KEY"), Admins: admins})
+	login, err := auth.New(auth.Config{BaseURL: baseURL, ClientID: os.Getenv("AGBREDO_GITHUB_CLIENT_ID"), ClientSecret: os.Getenv("AGBREDO_GITHUB_CLIENT_SECRET"), SessionKey: os.Getenv("AGBREDO_SESSION_KEY"), Admins: admins})
 	if err != nil {
 		return err
 	}
-	secret := os.Getenv("RILIAN_GITHUB_WEBHOOK_SECRET")
+	secret := os.Getenv("AGBREDO_GITHUB_WEBHOOK_SECRET")
 	if len(secret) < 32 {
-		return errors.New("RILIAN_GITHUB_WEBHOOK_SECRET must contain at least 32 random characters")
+		return errors.New("AGBREDO_GITHUB_WEBHOOK_SECRET must contain at least 32 random characters")
 	}
 	ttl := 24 * time.Hour
-	if value := os.Getenv("RILIAN_APPROVAL_TTL"); value != "" {
+	if value := os.Getenv("AGBREDO_APPROVAL_TTL"); value != "" {
 		ttl, err = time.ParseDuration(value)
 		if err != nil || ttl < time.Minute || ttl > 7*24*time.Hour {
-			return errors.New("RILIAN_APPROVAL_TTL must be a duration between 1m and 168h")
+			return errors.New("AGBREDO_APPROVAL_TTL must be a duration between 1m and 168h")
 		}
 	}
 	service := &core.Service{DB: pool, Backend: backend, BaseURL: baseURL, ApprovalTTL: ttl, Admins: admins}
@@ -114,21 +114,21 @@ func run(logger *slog.Logger) error {
 	})
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = os.Getenv("RILIAN_PORT")
+		port = os.Getenv("AGBREDO_PORT")
 	}
 	if port == "" {
 		port = "8080"
 	}
 	portNumber, err := strconv.Atoi(port)
 	if err != nil || portNumber < 1 || portNumber > 65535 {
-		return errors.New("PORT or RILIAN_PORT must be between 1 and 65535")
+		return errors.New("PORT or AGBREDO_PORT must be between 1 and 65535")
 	}
 	server := &http.Server{Addr: ":" + port, Handler: security(mux, logger), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	var workers sync.WaitGroup
 	workers.Add(1)
 	go func() { defer workers.Done(); service.Work(ctx, logger) }()
 	serverErr := make(chan error, 1)
-	go func() { logger.Info("Rilian listening", "address", server.Addr); serverErr <- server.ListenAndServe() }()
+	go func() { logger.Info("Agbredo listening", "address", server.Addr); serverErr <- server.ListenAndServe() }()
 	select {
 	case <-ctx.Done():
 	case err = <-serverErr:

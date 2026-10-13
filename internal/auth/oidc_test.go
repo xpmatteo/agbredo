@@ -27,11 +27,11 @@ func TestOIDCAuthenticatesOnlyBoundShortLivedWorkflowTokens(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]string{"kid": "key1", "kty": "RSA", "alg": "RS256", "use": "sig", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
 	}))
 	defer server.Close()
-	o := NewOIDC("https://rilian.example")
+	o := NewOIDC("https://agbredo.example")
 	o.jwksURL = server.URL
 	valid := func() jwt.MapClaims {
 		now := time.Now()
-		return jwt.MapClaims{"iss": issuer, "aud": "https://rilian.example", "sub": "repo:o/r:ref:refs/heads/main", "jti": "token-id", "iat": now.Add(-time.Second).Unix(), "nbf": now.Add(-time.Second).Unix(), "exp": now.Add(5 * time.Minute).Unix(), "repository": "o/r", "workflow_ref": "o/r/.github/workflows/agent.yml@refs/heads/main", "ref": "refs/heads/main", "run_id": "123", "run_attempt": "1", "event_name": "workflow_dispatch"}
+		return jwt.MapClaims{"iss": issuer, "aud": "https://agbredo.example", "sub": "repo:o/r:ref:refs/heads/main", "jti": "token-id", "iat": now.Add(-time.Second).Unix(), "nbf": now.Add(-time.Second).Unix(), "exp": now.Add(5 * time.Minute).Unix(), "repository": "o/r", "workflow_ref": "o/r/.github/workflows/agent.yml@refs/heads/main", "ref": "refs/heads/main", "run_id": "123", "run_attempt": "1", "event_name": "workflow_dispatch"}
 	}
 	sign := func(claims jwt.MapClaims, kid string, method jwt.SigningMethod) string {
 		token := jwt.NewWithClaims(method, claims)
@@ -59,7 +59,7 @@ func TestOIDCAuthenticatesOnlyBoundShortLivedWorkflowTokens(t *testing.T) {
 	}{
 		{"issuer", func(c jwt.MapClaims) { c["iss"] = "https://evil.example" }},
 		{"audience", func(c jwt.MapClaims) { c["aud"] = "other" }},
-		{"multiple audiences", func(c jwt.MapClaims) { c["aud"] = []string{"https://rilian.example", "other"} }},
+		{"multiple audiences", func(c jwt.MapClaims) { c["aud"] = []string{"https://agbredo.example", "other"} }},
 		{"expired", func(c jwt.MapClaims) { c["exp"] = time.Now().Add(-time.Minute).Unix() }},
 		{"missing expiry", func(c jwt.MapClaims) { delete(c, "exp") }},
 		{"old issuance", func(c jwt.MapClaims) { c["iat"] = time.Now().Add(-time.Hour).Unix() }},

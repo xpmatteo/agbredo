@@ -11,14 +11,14 @@ import (
 
 func testAuth(t *testing.T) *Auth {
 	t.Helper()
-	a, err := New(Config{BaseURL: "https://rilian.example", ClientID: "client", ClientSecret: "secret", SessionKey: strings.Repeat("k", 32), Admins: []string{"Alice"}})
+	a, err := New(Config{BaseURL: "https://agbredo.example", ClientID: "client", ClientSecret: "secret", SessionKey: strings.Repeat("k", 32), Admins: []string{"Alice"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return a
 }
 func TestConfigurationRejectsUnsafeDefaults(t *testing.T) {
-	good := Config{BaseURL: "https://rilian.example", ClientID: "c", ClientSecret: "s", SessionKey: strings.Repeat("k", 32), Admins: []string{"alice"}}
+	good := Config{BaseURL: "https://agbredo.example", ClientID: "c", ClientSecret: "s", SessionKey: strings.Repeat("k", 32), Admins: []string{"alice"}}
 	cases := []Config{good, good, good, good}
 	cases[0].BaseURL = "http://public.example"
 	cases[1].SessionKey = "short"
@@ -46,12 +46,12 @@ func TestAdministratorSessionAndCSRF(t *testing.T) {
 		}
 		w.WriteHeader(204)
 	}))
-	cookie := &http.Cookie{Name: "rilian_session", Value: a.encode(session{Login: "Alice", CSRF: "nonce", Expires: time.Now().Add(time.Hour).Unix()})}
+	cookie := &http.Cookie{Name: "agbredo_session", Value: a.encode(session{Login: "Alice", CSRF: "nonce", Expires: time.Now().Add(time.Hour).Unix()})}
 	for _, test := range []struct {
 		csrf, origin string
 		status       int
-	}{{"nonce", "https://rilian.example", 204}, {"wrong", "https://rilian.example", 403}, {"nonce", "https://evil.example", 403}} {
-		r := httptest.NewRequest("POST", "https://rilian.example/approvals/1", strings.NewReader(url.Values{"csrf": {test.csrf}}.Encode()))
+	}{{"nonce", "https://agbredo.example", 204}, {"wrong", "https://agbredo.example", 403}, {"nonce", "https://evil.example", 403}} {
+		r := httptest.NewRequest("POST", "https://agbredo.example/approvals/1", strings.NewReader(url.Values{"csrf": {test.csrf}}.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		r.Header.Set("Origin", test.origin)
 		r.AddCookie(cookie)
@@ -62,7 +62,7 @@ func TestAdministratorSessionAndCSRF(t *testing.T) {
 		}
 	}
 	a.admins = map[string]bool{"other": true}
-	r := httptest.NewRequest("POST", "https://rilian.example/approvals/1", nil)
+	r := httptest.NewRequest("POST", "https://agbredo.example/approvals/1", nil)
 	r.AddCookie(cookie)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
@@ -75,7 +75,7 @@ func TestInvalidAndExpiredSessions(t *testing.T) {
 	handler := a.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("unauthorized handler reached") }))
 	for _, value := range []string{"", a.encode(session{Login: "Alice", CSRF: "nonce", Expires: time.Now().Add(-time.Minute).Unix()}), a.encode(session{Login: "mallory", CSRF: "nonce", Expires: time.Now().Add(time.Hour).Unix()}), a.encode(session{Login: "Alice", CSRF: "nonce", Expires: time.Now().Add(time.Hour).Unix()}) + "tamper"} {
 		r := httptest.NewRequest("POST", "/approval", nil)
-		r.AddCookie(&http.Cookie{Name: "rilian_session", Value: value})
+		r.AddCookie(&http.Cookie{Name: "agbredo_session", Value: value})
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		if w.Code != 401 {
@@ -140,7 +140,7 @@ func TestOAuthStatePKCEAndAllowlist(t *testing.T) {
 	}
 	sessionFound := false
 	for _, c := range ok.Result().Cookies() {
-		if c.Name == "rilian_session" {
+		if c.Name == "agbredo_session" {
 			sessionFound = true
 			if !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode || c.MaxAge != 28800 {
 				t.Fatal("session flags")
