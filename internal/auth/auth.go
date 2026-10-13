@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"agbredo/internal/requestlog"
 )
 
 type Config struct {
@@ -204,28 +206,45 @@ func CSRF(r *http.Request) string           { s, _ := r.Context().Value(contextK
 func (a *Auth) User(r *http.Request) string { return User(r) }
 func (a *Auth) CSRF(r *http.Request) string { return CSRF(r) }
 func CheckCSRF(r *http.Request) bool {
+	return csrfReason(r) == ""
+}
+func csrfReason(r *http.Request) string {
 	if User(r) == "" || CSRF(r) == "" {
-		return false
+		return "session_missing"
 	}
 	if err := r.ParseForm(); err != nil {
-		return false
+		return "invalid_form"
 	}
 	token := r.PostForm.Get("csrf")
 	if token == "" {
 		token = r.Header.Get("X-CSRF-Token")
 	}
-	return len(token) <= 256 && subtle.ConstantTimeCompare([]byte(token), []byte(CSRF(r))) == 1
+	if token == "" {
+		return "csrf_token_missing"
+	}
+	if len(token) > 256 || subtle.ConstantTimeCompare([]byte(token), []byte(CSRF(r))) != 1 {
+		return "csrf_token_mismatch"
+	}
+	return ""
 }
 func (a *Auth) CheckCSRF(r *http.Request) bool {
-	if origin := r.Header.Get("Origin"); origin != "" && origin != a.config.BaseURL {
-		return false
+	return a.CSRFReason(r) == ""
+}
+
+// CSRFReason supplies stable log categories without disclosing either token.
+func (a *Auth) CSRFReason(r *http.Request) string {
+	if r.Header.Get("Origin") == "null" {
+		return "origin_unavailable"
 	}
-	return CheckCSRF(r)
+	if origin := r.Header.Get("Origin"); origin != "" && origin != a.config.BaseURL {
+		return "origin_mismatch"
+	}
+	return csrfReason(r)
 }
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
-	if !a.CheckCSRF(r) {
-		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+	if reason := a.CSRFReason(r); reason != "" {
+		requestlog.RejectForm(w, r, reason)
 		return
 	}
 	a.cookie(w, "agbredo_session", "", -1)

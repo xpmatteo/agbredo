@@ -70,6 +70,33 @@ func TestAdministratorSessionAndCSRF(t *testing.T) {
 		t.Fatal("removed administrator retains access")
 	}
 }
+
+func TestCSRFDiagnosticsPreserveOriginAndTokenChecks(t *testing.T) {
+	a := testAuth(t)
+	cookie := &http.Cookie{Name: "agbredo_session", Value: a.encode(session{Login: "Alice", CSRF: "expected", Expires: time.Now().Add(time.Hour).Unix()})}
+	for _, test := range []struct{ origin, token, reason string }{
+		{"https://agbredo.example", "expected", ""},
+		{"", "expected", ""},
+		{"null", "expected", "origin_unavailable"},
+		{"https://other.example", "expected", "origin_mismatch"},
+		{"https://agbredo.example", "", "csrf_token_missing"},
+		{"https://agbredo.example", "stale-private-token", "csrf_token_mismatch"},
+	} {
+		handler := a.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if reason := a.CSRFReason(r); reason != test.reason {
+				t.Errorf("reason=%q want=%q", reason, test.reason)
+			}
+			if a.CheckCSRF(r) != (test.reason == "") {
+				t.Error("diagnostic changed verification behavior")
+			}
+		}))
+		r := httptest.NewRequest(http.MethodPost, "/agents", strings.NewReader(url.Values{"csrf": {test.token}}.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Set("Origin", test.origin)
+		r.AddCookie(cookie)
+		handler.ServeHTTP(httptest.NewRecorder(), r)
+	}
+}
 func TestInvalidAndExpiredSessions(t *testing.T) {
 	a := testAuth(t)
 	handler := a.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("unauthorized handler reached") }))

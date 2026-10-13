@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"agbredo/internal/core"
+	"agbredo/internal/requestlog"
 )
 
 //go:embed templates.html style.css
@@ -119,11 +120,15 @@ func (s *Server) protect(next http.HandlerFunc, mutation bool) http.HandlerFunc 
 		if mutation {
 			r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 			if err := r.ParseForm(); err != nil {
-				http.Error(w, "Invalid or oversized form.", http.StatusBadRequest)
+				requestlog.RejectForm(w, r, "invalid_form")
 				return
 			}
 			if !s.auth.CheckCSRF(r) {
-				http.Error(w, "Form verification failed. Reload the page and try again.", http.StatusForbidden)
+				reason := "csrf_verification_failed"
+				if diagnostic, ok := s.auth.(interface{ CSRFReason(*http.Request) string }); ok {
+					reason = diagnostic.CSRFReason(r)
+				}
+				requestlog.RejectForm(w, r, reason)
 				return
 			}
 		}

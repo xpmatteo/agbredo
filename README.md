@@ -55,6 +55,10 @@ Generate a session secret with `openssl rand -hex 32`, set `AGBREDO_SESSION_KEY`
 
 Dashboard sessions use signed, HTTP-only cookies and expire after eight hours. HTTPS deployments also mark the cookies secure. The administrator allowlist is checked on each authenticated request; changing it requires restarting the application. Rotating `AGBREDO_SESSION_KEY` invalidates existing sessions.
 
+Browser pages use `Referrer-Policy: same-origin`: same-site form submissions retain their origin for verification, while links to other sites omit the referrer. `no-referrer` can make browsers send `Origin: null` on ordinary form POSTs and caused valid registration forms to be rejected.
+
+HTTP requests log a request ID, method, path, status and duration as JSON. Form verification failures also log a specific `reason`: `origin_unavailable`, `origin_mismatch`, `csrf_token_missing`, `csrf_token_mismatch`, or `invalid_form`. The response explains the cause and includes the same request ID (`X-Request-ID`) for correlating logs. Request bodies, query strings, cookies, credentials and CSRF tokens are not logged. If the page address differs from `AGBREDO_BASE_URL`, open the configured address; if a form belongs to an earlier login session, reload its form page.
+
 ## Connect existing Claude Code agents
 
 Follow the [reporting integration setup](integrations/claude-code/README.md#minimal-workflow-change). Register the existing workflow in observation mode; leave its continuation workflow empty. Add GitHub OIDC permission alongside existing job permissions and wrap only its execution step. The Claude OAuth token stays in the existing Actions secret and runner environment. Do not add Claude credentials to the Go environment, database, workflow dispatch inputs or reporting payload.

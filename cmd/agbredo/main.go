@@ -17,6 +17,7 @@ import (
 	"agbredo/internal/auth"
 	"agbredo/internal/core"
 	"agbredo/internal/github"
+	"agbredo/internal/requestlog"
 	"agbredo/internal/store"
 	"agbredo/internal/web"
 	"agbredo/internal/webapi"
@@ -149,17 +150,17 @@ func run(logger *slog.Logger) error {
 	return nil
 }
 func security(next http.Handler, logger *slog.Logger) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return requestlog.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				logger.Error("HTTP panic", "method", r.Method, "path", r.URL.Path)
+				logger.Error("HTTP panic", "request_id", requestlog.ID(r), "method", r.Method, "path", r.URL.Path)
 				http.Error(w, "Internal server error", 500)
 			}
 		}()
 		next.ServeHTTP(w, r)
-	})
+	}), logger)
 }
