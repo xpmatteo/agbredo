@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+rilian
+__pycache__
+*.pyc
+.DS_Store

@@ -1,0 +1,51 @@
+name: Rilian approved continuation
+run-name: "rilian:${{ inputs.rilian_correlation_id }}:approval:${{ inputs.rilian_approval_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      rilian_run_id:
+        description: Rilian run ID
+        required: true
+        type: string
+      rilian_correlation_id:
+        description: Rilian correlation ID
+        required: true
+        type: string
+      rilian_url:
+        description: Public HTTPS URL of Rilian
+        required: true
+        type: string
+      rilian_approval_id:
+        description: Immutable approval request ID
+        required: true
+        type: string
+      rilian_payload_hash:
+        description: Server hash of approved immutable proposal
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: "rilian-approval-${{ inputs.rilian_approval_id }}"
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate authorization and execute approved action through Rilian
+        env:
+          RILIAN_RUN_ID: ${{ inputs.rilian_run_id }}
+          RILIAN_CORRELATION_ID: ${{ inputs.rilian_correlation_id }}
+          RILIAN_URL: ${{ inputs.rilian_url }}
+          RILIAN_APPROVAL_ID: ${{ inputs.rilian_approval_id }}
+          RILIAN_PAYLOAD_HASH: ${{ inputs.rilian_payload_hash }}
+        run: python3 examples/github-agent/agent.py continue

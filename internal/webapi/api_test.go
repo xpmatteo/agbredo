@@ -1,0 +1,154 @@
+package webapi
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"rilian/internal/core"
+)
+
+type fakeVerifier struct {
+	identity core.Identity
+	err      error
+	calls    int
+	token    string
+}
+
+func (v *fakeVerifier) Verify(_ context.Context, token string) (core.Identity, error) {
+	v.calls++
+	v.token = token
+	return v.identity, v.err
+}
+
+func testAPI(verifier *fakeVerifier) *API {
+	// A nil service deliberately makes any request which bypasses an expected
+	// HTTP rejection fail the test before it can perform a persistence operation.
+	return &API{Verifier: verifier, WebhookSecret: "test-webhook-secret-with-32-characters", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+}
+
+func requestAPI(a *API, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {
+	mux := http.NewServeMux()
+	a.Register(mux)
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	for name, value := range headers {
+		r.Header.Set(name, value)
+	}
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	return w
+}
+
+func TestRunnerRoutesRejectUnauthenticatedRequestsBeforeService(t *testing.T) {
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPost, "/api/runs/run/events"},
+		{http.MethodGet, "/api/approvals/approval"},
+		{http.MethodPost, "/api/approvals/approval/execute"},
+	} {
+		for _, authorization := range []string{"", "Basic unrelated", "Bearer " + strings.Repeat("a", 16384)} {
+			v := &fakeVerifier{}
+			w := requestAPI(testAPI(v), route.method, route.path, `{}`, map[string]string{"Authorization": authorization})
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("%s %s accepted header: status %d", route.method, route.path, w.Code)
+			}
+			if v.calls != 0 {
+				t.Fatal("malformed authentication header reached verifier")
+			}
+		}
+		v := &fakeVerifier{err: core.ErrUnauthorized}
+		w := requestAPI(testAPI(v), route.method, route.path, `{}`, map[string]string{"Authorization": "Bearer expired-token"})
+		if w.Code != http.StatusUnauthorized || v.calls != 1 || v.token != "expired-token" {
+			t.Fatalf("invalid token was not rejected correctly: status %d, calls %d", w.Code, v.calls)
+		}
+	}
+}
+
+func TestRunnerIdentityUsesVerifiedClaims(t *testing.T) {
+	expected := core.Identity{Repository: "owner/repo", Workflow: "owner/repo/.github/workflows/agent.yml@refs/heads/main", Ref: "refs/heads/main", RunID: 42, RunAttempt: 1}
+	v := &fakeVerifier{identity: expected}
+	r := httptest.NewRequest(http.MethodPost, "/api/runs/run/events", nil)
+	r.Header.Set("Authorization", "Bearer signed-token")
+	w := httptest.NewRecorder()
+	got, ok := testAPI(v).identity(w, r)
+	if !ok || got != expected || v.token != "signed-token" {
+		t.Fatalf("verified identity mismatch: got %+v, accepted %v", got, ok)
+	}
+}
+
+func TestAuthenticatedRunnerRejectsMalformedAndOversizedJSON(t *testing.T) {
+	for _, path := range []string{"/api/runs/run/events", "/api/approvals/approval/execute"} {
+		for _, body := range []string{``, `{`, `[]`, `{"unknown_field":true}`, `{} {}`, `{} trailing`, `{"id":"` + strings.Repeat("a", 65536) + `"}`} {
+			v := &fakeVerifier{identity: core.Identity{Repository: "owner/repo", RunID: 1}}
+			w := requestAPI(testAPI(v), http.MethodPost, path, body, map[string]string{"Authorization": "Bearer valid-token", "Content-Type": "application/json"})
+			if w.Code != http.StatusBadRequest || v.calls != 1 {
+				t.Fatalf("%s accepted invalid JSON: status %d, verification calls %d", path, w.Code, v.calls)
+			}
+		}
+	}
+}
+
+func TestDecodeRequiresOneKnownJSONObject(t *testing.T) {
+	var event core.Event
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"id":"stable-event","cost_micros":3,"metadata":{"backend":"github"}}`))
+	w := httptest.NewRecorder()
+	if !decode(w, r, &event) || event.ID != "stable-event" || event.CostMicros != 3 || string(event.Metadata) != `{"backend":"github"}` {
+		t.Fatalf("valid extensible event not decoded: %+v", event)
+	}
+	for _, body := range []string{`{"cost_micros":0.1}`, `{"cost_micros":9223372036854775808}`, `{"timestamp":"invalid"}`, `{"proposal":{"unrecognized":true}}`, `{} null`} {
+		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		if decode(w, r, &core.Event{}) || w.Code != http.StatusBadRequest {
+			t.Fatalf("invalid typed payload was accepted: %s", body)
+		}
+	}
+}
+
+func signWebhook(secret, body string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(body))
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func TestWebhookSignatureAndPing(t *testing.T) {
+	a := testAPI(&fakeVerifier{})
+	body := `{"zen":"Keep it logically awesome."}`
+	for _, signature := range []string{"", "sha1=bad", "sha256=" + strings.Repeat("0", 64), signWebhook("another-secret", body), signWebhook(a.WebhookSecret, body+" ")} {
+		w := requestAPI(a, http.MethodPost, "/api/github/webhook", body, map[string]string{"X-Hub-Signature-256": signature, "X-GitHub-Event": "ping", "X-GitHub-Delivery": "delivery-1"})
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("bad webhook signature accepted: status %d", w.Code)
+		}
+	}
+	w := requestAPI(a, http.MethodPost, "/api/github/webhook", body, map[string]string{"X-Hub-Signature-256": signWebhook(a.WebhookSecret, body), "X-GitHub-Event": "ping", "X-GitHub-Delivery": "delivery-1"})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("genuinely signed ping rejected: status %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWebhookDeliveryValidationAndLimits(t *testing.T) {
+	a := testAPI(&fakeVerifier{})
+	body := `{}`
+	for _, delivery := range []string{"", strings.Repeat("d", 161)} {
+		w := requestAPI(a, http.MethodPost, "/api/github/webhook", body, map[string]string{"X-Hub-Signature-256": signWebhook(a.WebhookSecret, body), "X-GitHub-Event": "ping", "X-GitHub-Delivery": delivery})
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("invalid delivery ID accepted: status %d", w.Code)
+		}
+	}
+	body = strings.Repeat("a", (1<<20)+1)
+	w := requestAPI(a, http.MethodPost, "/api/github/webhook", body, map[string]string{"X-Hub-Signature-256": signWebhook(a.WebhookSecret, body), "X-GitHub-Event": "ping", "X-GitHub-Delivery": "delivery-1"})
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized webhook status = %d", w.Code)
+	}
+	for _, body := range []string{`not-json`, `{}`, `{"workflow_run":{"id":0}}`} {
+		w := requestAPI(a, http.MethodPost, "/api/github/webhook", body, map[string]string{"X-Hub-Signature-256": signWebhook(a.WebhookSecret, body), "X-GitHub-Event": "workflow_run", "X-GitHub-Delivery": "delivery-1"})
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("invalid workflow payload accepted: status %d", w.Code)
+		}
+	}
+}
