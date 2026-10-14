@@ -120,7 +120,7 @@ func TestDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
 		t.Fatal("deployment page offered dispatch", w.Body.String())
 	}
 	w = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil)
-	for _, text := range []string{"Unavailable", "Actual subscription charges unknown", "Runs in GitHub Actions; Agbredo only receives reports"} {
+	for _, text := range []string{"Unavailable", "Actual subscription charges unknown", "Runs in GitHub Actions; Agbredo only receives its telemetry and GitHub status"} {
 		if !strings.Contains(w.Body.String(), text) {
 			t.Fatalf("missing usage distinction: %s", text)
 		}
@@ -128,10 +128,9 @@ func TestDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
 	zero := int64(0)
 	s.run.ClaudeUsage = &core.ClaudeUsage{InputTokens: &zero}
 	s.run.EstimatedCostAvailable = true
-	s.events = []core.Event{{Type: "claude.execution", Claude: &core.Report{Version: "2.1.296", Phase: "finished", ExitCode: new(int), Usage: s.run.ClaudeUsage, EstimatedCostMicros: &zero}}}
 	w = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil)
-	if !strings.Contains(w.Body.String(), "Exit 0") || !strings.Contains(w.Body.String(), "API-equivalent estimate $0.000000") {
-		t.Fatal("measured zero or CLI status lost", w.Body.String())
+	if !strings.Contains(w.Body.String(), "$0.000000") || !strings.Contains(w.Body.String(), "<strong>0</strong>") {
+		t.Fatal("measured zero lost", w.Body.String())
 	}
 }
 

@@ -36,7 +36,7 @@ func hashToken(token string) string {
 }
 
 // MintToken gives one agent run a token for posting telemetry. The
-// runner proves who it is with its GitHub identity, exactly as for a report.
+// runner proves who it is with its GitHub OIDC identity (see lockRun).
 // The token only identifies this run attempt and agent run; it is not an identity
 // for anything else. This also registers the run.
 func (s *Service) MintToken(ctx context.Context, deploymentID, agentRun string, i Identity) (string, time.Time, error) {

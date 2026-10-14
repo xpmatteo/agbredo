@@ -10,7 +10,7 @@ import (
 
 func tokenDeployment(t *testing.T) (*Service, *fakeBackend, Deployment, Identity) {
 	s, f := testService(t)
-	a, i := reportDeployment(t, s, f)
+	a, i := registeredDeployment(t, s, f)
 	return s, f, a, i
 }
 

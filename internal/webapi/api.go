@@ -30,7 +30,6 @@ type API struct {
 }
 
 func (a *API) Register(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/agents/{id}/observations", a.report)
 	mux.HandleFunc("POST /api/agents/{id}/otlp-token", a.mintToken)
 	mux.HandleFunc("POST /v1/metrics", a.otlp("metrics", (*core.Service).IngestMetrics))
 	mux.HandleFunc("POST /v1/logs", a.otlp("logs", (*core.Service).IngestLogs))
@@ -123,22 +122,6 @@ func labels(o core.TelemetryOrigin) map[string]string {
 		}
 	}
 	return all
-}
-func (a *API) report(w http.ResponseWriter, r *http.Request) {
-	identity, ok := a.identity(w, r)
-	if !ok {
-		return
-	}
-	var o core.Report
-	if !decode(w, r, &o) {
-		return
-	}
-	run, accepted, err := a.Service.Report(r.Context(), r.PathValue("id"), o, identity)
-	if err != nil {
-		a.failure(w, err)
-		return
-	}
-	write(w, map[string]any{"run_id": run.ID, "accepted": accepted})
 }
 func (a *API) identity(w http.ResponseWriter, r *http.Request) (core.Identity, bool) {
 	header := r.Header.Get("Authorization")

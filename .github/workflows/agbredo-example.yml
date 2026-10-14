@@ -2,16 +2,10 @@ name: Agbredo example agent
 
 on:
   workflow_dispatch:
-    inputs:
-      scenario:
-        description: Which pretend agent to run
-        type: choice
-        default: hello
-        options: [hello, play, rate-limited, spendthrift, silent, cancelled, otlp, claude]
 
 permissions:
   contents: read
-  id-token: write # lets the job ask GitHub for the OIDC token that authenticates its reports
+  id-token: write # lets the job ask GitHub for the OIDC token that gets its telemetry token
 
 jobs:
   example:
@@ -21,33 +15,16 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      # For "otlp" only: the token which lets a Claude Code step send its telemetry to Agbredo.
-      # A real workflow puts this step before each Claude Code step, with a different source name for each.
-      - name: Get a telemetry token
-        if: inputs.scenario == 'otlp'
-        uses: ./integrations/claude-code-otlp
-        with:
-          url: ${{ vars.AGBREDO_URL }}
-          agent-id: ${{ vars.AGBREDO_AGENT_ID }}
-          source: pretend-claude
-      - name: Run the pretend agent
-        if: inputs.scenario != 'claude'
-        env:
-          AGBREDO_URL: ${{ vars.AGBREDO_URL }}
-          AGBREDO_AGENT_ID: ${{ vars.AGBREDO_AGENT_ID }}
-          SCENARIO: ${{ inputs.scenario }}
-        run: python3 examples/hello-agent/agent.py "$SCENARIO"
-      # For "claude" only: a real Claude Code step. It needs the CLAUDE_CODE_OAUTH_TOKEN secret.
+      # A real Claude Code step. It needs the CLAUDE_CODE_OAUTH_TOKEN secret.
       # The telemetry step goes right before the Claude step and names it.
+      # A workflow with several Claude Code steps puts one before each, with a different source name for each.
       - name: Get a telemetry token for Claude Code
-        if: inputs.scenario == 'claude'
         uses: ./integrations/claude-code-otlp
         with:
           url: ${{ vars.AGBREDO_URL }}
           agent-id: ${{ vars.AGBREDO_AGENT_ID }}
           source: claude-hi
       - name: Claude Code says hi
-        if: inputs.scenario == 'claude'
         uses: anthropics/claude-code-action@c2d289cca71cda091794983294573dd33f0f6e7a # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

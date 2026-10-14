@@ -73,9 +73,11 @@ type Run struct {
 	AgentRuns map[string]*AgentRunUsage `json:"sources,omitempty"`
 }
 
-// Costs are deltas, expressed as integer microdollars. A stable event ID makes retries safe.
+// Event is one entry in a run's history: a GitHub status change. A stable
+// event ID makes retries safe. Rows stored by the former report route also
+// hold "claude", "duration_ms", "input_tokens", "output_tokens" and
+// "cost_micros" keys; loading ignores them.
 type Event struct {
-	Claude             *Report         `json:"claude,omitempty"`
 	ID                 string          `json:"id"`
 	RunID              string          `json:"run_id"`
 	CorrelationID      string          `json:"correlation_id"`
@@ -86,10 +88,6 @@ type Event struct {
 	Action             string          `json:"action"`
 	Resource           string          `json:"resource"`
 	Status             string          `json:"status"`
-	DurationMS         int64           `json:"duration_ms"`
-	InputTokens        int64           `json:"input_tokens"`
-	OutputTokens       int64           `json:"output_tokens"`
-	CostMicros         int64           `json:"cost_micros"`
 	Message            string          `json:"message"`
 	Error              string          `json:"error"`
 	Metadata           json.RawMessage `json:"metadata,omitempty"`

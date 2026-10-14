@@ -1,6 +1,6 @@
 # Claude Code telemetry to Agbredo
 
-A small action which lets Claude Code send its OpenTelemetry straight to Agbredo. It replaces the wrapper and sidecar in `integrations/claude-code/`. That older integration still works.
+A small action which lets Claude Code send its OpenTelemetry straight to Agbredo. It is the only way usage reaches Agbredo. It replaced an older wrapper and sidecar (`integrations/claude-code/`), which has been removed along with its report route.
 
 ## Use
 
