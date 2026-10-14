@@ -2,13 +2,14 @@
   "assignee": "Matteo Vaccari",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-14T12:19:16Z",
   "created": "2026-10-14T09:30:00Z",
   "description": "Agree on domain words (Agent, Version, Deployment, Run, ...) with Matt and record them in docs/glossary.md, noting where code and schema disagree today.",
   "id": "ag-qvp",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add docs/glossary.md: domain terms (ubiquitous language)",
   "type": "task",
-  "updated_at": "2026-10-14T09:30:10Z"
+  "updated_at": "2026-10-14T12:19:16Z"
 }
