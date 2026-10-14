@@ -3,12 +3,12 @@
   "blocked_by": [],
   "blocks": [],
   "created": "2026-10-14T12:22:42Z",
-  "description": "docs/glossary.md fixes the domain words. Bring code, schema and dashboard in line. Items marked DESIGN TALK change the trust model, schema or what the server stores: talk with Matt before starting.",
+  "description": "Bring code, schema and dashboard in line with the domain words in docs/00-glossary.md (read it first; read docs/10-design.md next).\n\nDecisions made with Matt on 2026-10-14:\n- Pipeline: the versioned implementation, a reusable workflow in a central repository, named by its path. Version = the central repo's git ref/SHA, supplied by GitHub in the OIDC job_workflow_ref / job_workflow_sha claims, never by the pipeline itself.\n- Deployment: a pipeline used in one repository through one caller workflow. Identity = repository + workflow file (not ref). One caller workflow calls exactly one pipeline. Deployments are created by their first valid run, not registered by hand.\n- Run: one GitHub run attempt. Agent: a named role in a pipeline. Agent run: one Claude Code execution of an agent in a run (today's \"source\"). Observation: anything that arrives about a run.\n- Trust: we accept any pipeline. GitHub auth (OIDC) and the GitHub App connection decide which repos can talk to Agbredo.\n\nToday core.Agent / the agents table hold what the glossary calls a Deployment, and core.Agent.Version is an edit counter.\n\nChildren marked DESIGN TALK change the trust model, the schema or what the server stores. Per CLAUDE.md, agree the details with Matt before writing code; record the outcome in the ticket. Migrations are append-only; keep backwards compatibility (stored JSON keys, report fields, action inputs, URLs).",
   "id": "ag-s99",
   "labels": [],
   "priority": 2,
   "status": "open",
   "title": "Align code and data with the glossary",
   "type": "epic",
-  "updated_at": "2026-10-14T12:22:42Z"
+  "updated_at": "2026-10-14T12:34:19Z"
 }
