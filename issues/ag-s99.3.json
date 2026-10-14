@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "ag-s99.6"
+  ],
   "blocks": [
     "ag-s99.4"
   ],
@@ -13,5 +15,5 @@
   "status": "open",
   "title": "Identify a deployment by repository + workflow file",
   "type": "task",
-  "updated_at": "2026-10-14T12:23:07Z"
+  "updated_at": "2026-10-14T12:23:08Z"
 }

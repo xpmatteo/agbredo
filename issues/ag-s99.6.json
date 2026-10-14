@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "ag-s99.3"
+  ],
   "created": "2026-10-14T12:22:58Z",
   "description": "Code-only rename. Keep JSON keys, table names and URLs for backwards compatibility. Also rename Agent.Version (an edit counter) to Revision in Go, keeping the json key.",
   "id": "ag-s99.6",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Rename core.Agent to Deployment in Go code",
   "type": "task",
-  "updated_at": "2026-10-14T12:22:58Z"
+  "updated_at": "2026-10-14T12:23:08Z"
 }
