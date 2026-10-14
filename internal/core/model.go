@@ -30,6 +30,8 @@ func ID() string {
 	return hex.EncodeToString(b[:])
 }
 
+// JSON keys keep older names (agent, version, budget_micros, over_budget)
+// so that stored documents still load. Do not rename them.
 type Deployment struct {
 	ID              string `json:"id"`
 	Name            string `json:"name"`
