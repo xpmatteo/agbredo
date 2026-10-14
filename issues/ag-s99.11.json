@@ -2,6 +2,8 @@
   "assignee": "Claude",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-14T15:15:40Z",
+  "close_reason": "Done on branch claude/project-thread-yn74b3 (merge 5adbfda), reviewed. Manual SQL for Matt: DELETE FROM events WHERE document-\u003e\u003e'type' = 'claude.execution'; Open for Matt: CLAUDE.md Direction line 'extend the reporter' wording.",
   "created": "2026-10-14T14:40:48Z",
   "description": "Decided with Matt on 2026-10-14 in the project thread: the reporter wrapper (integrations/claude-code: report.py, sidecar.py) is dropped. The telemetry step (integrations/claude-code-otlp) is the only way usage reaches Agbredo. We give up the per-agent-run exit code/outcome, the explicit finished+duration per agent run, and usage from killed jobs; run status still comes from GitHub webhooks and polls.\n\nKnown callers: the only deployed pipeline (xpmatteo/rpg-interpreter .github/workflows/agent-instructions-audit.yml) uses claude-code-otlp only; .github/workflows/agbredo-example.yml uses claude-code-otlp only.\n\nWork: remove integrations/claude-code and examples/hello-agent (a minimal reporter); update README, docs/10-design.md (Parts, Flow, Trust, Data), docs/20-routes.md, docs/00-glossary.md (Reporter row; Observation = telemetry, webhooks, polls). Old runs whose events embed a report (Event.Claude) must still load and display.\n\nOpen question for Matt: what happens to POST /api/agents/{id}/observations and core.Report (keep accepting, or remove the route)?\n\nCheck: go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./...; python tests for integrations/claude-code-otlp still pass.",
   "id": "ag-s99.11",
@@ -22,8 +24,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Drop the reporter (integrations/claude-code); telemetry is the only usage path",
   "type": "task",
-  "updated_at": "2026-10-14T15:02:45Z"
+  "updated_at": "2026-10-14T15:15:40Z"
 }
