@@ -77,7 +77,7 @@ func TestBrowserDeploymentRegistration(t *testing.T) {
 	mux.HandleFunc("GET /submit.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
 		_, _ = io.WriteString(w, `const f=document.querySelector('form[action="/agents"]');
-for(const [key,value] of Object.entries({name:'Agent instructions audit',description:'Reviews CLAUDE.md and README.md',owner:'xpmatteo',repository:'rpg-interpreter',workflow:'agent-instructions-audit.yml',ref:'main',installation_id:'170927509',budget:'5'})){f.elements.namedItem(key).value=value;}
+for(const [key,value] of Object.entries({name:'Agent instructions audit',description:'Reviews CLAUDE.md and README.md',owner:'xpmatteo',repository:'rpg-interpreter',workflow:'agent-instructions-audit.yml',installation_id:'170927509',budget:'5'})){f.elements.namedItem(key).value=value;}
 f.submit();`)
 	})
 	protected := login.RequireAdmin(mux)

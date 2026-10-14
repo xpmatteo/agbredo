@@ -33,7 +33,7 @@ func (f *fakeBackend) GetRunAttempt(ctx context.Context, a Deployment, id int64,
 func (f *fakeBackend) put(r WorkflowRun) { f.mu.Lock(); defer f.mu.Unlock(); f.workflows[r.ID] = r }
 
 func validDeployment() Deployment {
-	return Deployment{Name: "Example", Owner: "acme", Repository: "agent", Workflow: "agent.yml", Ref: "main", InstallationID: 123, ThresholdMicros: 1_000_000, Enabled: true}
+	return Deployment{Name: "Example", Owner: "acme", Repository: "agent", Workflow: "agent.yml", InstallationID: 123, ThresholdMicros: 1_000_000, Enabled: true}
 }
 func TestDeploymentValidation(t *testing.T) {
 	if err := ValidateDeployment(validDeployment()); err != nil {
@@ -44,7 +44,7 @@ func TestDeploymentValidation(t *testing.T) {
 		change func(*Deployment)
 	}{
 		{"empty name", func(a *Deployment) { a.Name = "" }}, {"owner path", func(a *Deployment) { a.Owner = "../acme" }}, {"workflow path", func(a *Deployment) { a.Workflow = "../x.yml" }},
-		{"invalid reference", func(a *Deployment) { a.Ref = "main;\n" }}, {"installation", func(a *Deployment) { a.InstallationID = 0 }}, {"negative threshold", func(a *Deployment) { a.ThresholdMicros = -1 }},
+		{"installation", func(a *Deployment) { a.InstallationID = 0 }}, {"negative threshold", func(a *Deployment) { a.ThresholdMicros = -1 }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -176,6 +176,72 @@ func TestDatabaseDeploymentCRUDSnapshots(t *testing.T) {
 		t.Fatal("historical run lost", err)
 	}
 }
+
+// A repository + workflow file is registered once among live deployments.
+// Owner and repository ignore case, as on GitHub.
+func TestDatabaseDeploymentIsUniquePerRepositoryAndWorkflow(t *testing.T) {
+	s, _ := testService(t)
+	ctx := context.Background()
+	first, err := s.SaveDeployment(ctx, validDeployment())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, change := range map[string]func(*Deployment){
+		"same":       func(*Deployment) {},
+		"other case": func(a *Deployment) { a.Owner, a.Repository = "ACME", "Agent" },
+	} {
+		dup := validDeployment()
+		change(&dup)
+		dup.Name = "Duplicate"
+		if _, err = s.SaveDeployment(ctx, dup); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "already registered") {
+			t.Errorf("%s: duplicate accepted or wrong error: %v", name, err)
+		}
+	}
+	other := validDeployment()
+	other.Workflow = "other.yml"
+	if other, err = s.SaveDeployment(ctx, other); err != nil {
+		t.Fatal("another workflow in the same repository refused", err)
+	}
+	other.Workflow = first.Workflow
+	if _, err = s.SaveDeployment(ctx, other); !errors.Is(err, ErrInvalid) {
+		t.Fatal("edit into a duplicate accepted", err)
+	}
+	if err = s.DeleteDeployment(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.SaveDeployment(ctx, validDeployment()); err != nil {
+		t.Fatal("a deleted deployment cannot be registered again", err)
+	}
+}
+
+// Deployments stored when they were tied to one ref still load and still get
+// runs, from any ref. Their runs keep that copy unchanged and record their own ref.
+func TestDatabaseLegacyDeploymentWithRef(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	legacy := `{"id":"legacy","name":"Legacy","description":"","owner":"acme","repository":"agent","workflow":"agent.yml","ref":"main","installation_id":123,"budget_micros":1000000,"enabled":true,"version":1}`
+	if _, err := s.DB.Exec(ctx, "INSERT INTO agents(id,document) VALUES('legacy',$1)", legacy); err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.Deployment(ctx, "legacy")
+	if err != nil || a.Ref != "main" || a.Workflow != "agent.yml" {
+		t.Fatalf("legacy deployment did not load: %#v %v", a, err)
+	}
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: "agent.yml", Ref: "feature", Status: "in_progress"})
+	i := Identity{Repository: "acme/agent", Workflow: "agent.yml", Ref: "refs/heads/feature", RunID: 777, RunAttempt: 1, EventName: "push"}
+	r := startRun(t, s, "legacy", "agent", i)
+	if r.Ref != "refs/heads/feature" || r.Deployment.Ref != "main" {
+		t.Fatalf("run ref %q, copy ref %q", r.Ref, r.Deployment.Ref)
+	}
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: "agent.yml", Ref: "feature", Status: "completed", Conclusion: "success"})
+	if err = s.Webhook(ctx, "legacy-delivery", "acme/agent", 777); err != nil {
+		t.Fatal("saving a run with a legacy copy failed", err)
+	}
+	if read, _ := s.Run(ctx, r.ID); read.Status != "completed" || read.Deployment.Ref != "main" {
+		t.Fatalf("%#v", read)
+	}
+}
+
 func TestDatabaseWebhookAndReconciliation(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()

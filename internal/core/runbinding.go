@@ -29,7 +29,7 @@ func attemptRunID(deployment string, run int64, attempt int64) string {
 }
 
 func verifyIdentity(a Deployment, i Identity, gh WorkflowRun) error {
-	if i.Repository != a.Owner+"/"+a.Repository || i.Workflow != a.Workflow || !refMatches(a.Ref, i.Ref) || i.RunID <= 0 || i.RunAttempt <= 0 || gh.ID != i.RunID || gh.Attempt != i.RunAttempt || gh.Workflow != a.Workflow || !refMatches(a.Ref, gh.Ref) {
+	if i.Repository != a.Owner+"/"+a.Repository || i.Workflow != a.Workflow || i.RunID <= 0 || i.RunAttempt <= 0 || gh.ID != i.RunID || gh.Attempt != i.RunAttempt || gh.Workflow != a.Workflow {
 		return ErrUnauthorized
 	}
 	return nil
@@ -63,7 +63,7 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i
 	}
 	if r.ID == "" {
 		r = Run{ID: id, CorrelationID: id, Deployment: a, RunAttempt: i.RunAttempt, Status: "running", ThresholdMicros: a.ThresholdMicros, CreatedAt: now(), UpdatedAt: now()}
-		r.GitHubRunID = i.RunID
+		r.GitHubRunID, r.Ref = i.RunID, i.Ref
 		r.Actor, r.TriggeringActor = gh.Actor, gh.TriggeringActor
 		r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, i.RunID)
 		if _, err = tx.Exec(ctx, "INSERT INTO runs(id,agent_id,correlation_id,status,document) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING", id, a.ID, id, r.Status, mustJSON(r)); err != nil {

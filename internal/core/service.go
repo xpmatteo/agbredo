@@ -3,9 +3,11 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -44,10 +46,20 @@ func (s *Service) SaveDeployment(ctx context.Context, a Deployment) (Deployment,
 		a.Revision = previous.Revision + 1
 		_, err = tx.Exec(ctx, "UPDATE agents SET document=$2 WHERE id=$1", a.ID, mustJSON(a))
 	}
+	if isDuplicateDeployment(err) {
+		return a, invalid(fmt.Sprintf("a deployment of %s/%s with workflow %s is already registered", a.Owner, a.Repository, a.Workflow))
+	}
 	if err != nil {
 		return a, err
 	}
 	return a, tx.Commit(ctx)
+}
+
+// isDuplicateDeployment says whether err is a violation of the unique index on
+// repository + workflow file (migrations/006_unique_deployment.sql).
+func isDuplicateDeployment(err error) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && pg.Code == "23505" && pg.ConstraintName == "agents_repository_workflow"
 }
 func (s *Service) DeleteDeployment(ctx context.Context, id string) error {
 	tag, err := s.DB.Exec(ctx, "UPDATE agents SET deleted=true WHERE id=$1 AND NOT deleted", id)

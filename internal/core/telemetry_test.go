@@ -15,7 +15,7 @@ func tokenDeployment(t *testing.T) (*Service, *fakeBackend, Deployment, Identity
 }
 
 func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
-	s, _, a, i := tokenDeployment(t)
+	s, f, a, i := tokenDeployment(t)
 	ctx := context.Background()
 	token, expires, err := s.MintToken(ctx, a.ID, "review", i)
 	if err != nil || len(token) < 40 || time.Until(expires) < 5*time.Hour || time.Until(expires) > TokenLifetime {
@@ -24,6 +24,9 @@ func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
 	r, err := s.Run(ctx, attemptRunID(a.ID, i.RunID, i.RunAttempt))
 	if err != nil || r.Status != "running" {
 		t.Fatalf("run was not registered: %#v %v", r, err)
+	}
+	if r.Ref != "refs/heads/main" {
+		t.Fatalf("run ref = %q", r.Ref)
 	}
 	if r.ClaudeUsage != nil || r.EstimatedCostAvailable || r.AgentRuns != nil {
 		t.Fatalf("a new run must have no measurements yet, not zeros: %#v", r)
@@ -34,13 +37,19 @@ func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
 	}
 	for name, change := range map[string]func(*Identity){
 		"repository": func(i *Identity) { i.Repository = "evil/repo" }, "workflow": func(i *Identity) { i.Workflow = "other.yml" },
-		"ref": func(i *Identity) { i.Ref = "refs/heads/other" }, "attempt": func(i *Identity) { i.RunAttempt = 2 },
+		"attempt": func(i *Identity) { i.RunAttempt = 2 },
 	} {
 		wrong := i
 		change(&wrong)
 		if _, _, err = s.MintToken(ctx, a.ID, "review", wrong); !errors.Is(err, ErrUnauthorized) {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+	// The ref is not part of the deployment: a run from another branch belongs to it.
+	f.put(WorkflowRun{ID: 778, Attempt: 1, Workflow: a.Workflow, Ref: "feature", Status: "in_progress"})
+	branch := Identity{Repository: "acme/agent", Workflow: a.Workflow, Ref: "refs/heads/feature", RunID: 778, RunAttempt: 1, EventName: "push"}
+	if other := startRun(t, s, a.ID, "review", branch); other.Ref != "refs/heads/feature" || other.Deployment.ID != a.ID {
+		t.Errorf("run from another branch: %#v", other)
 	}
 	if tp := TraceParent(a.ID, i); !regexp.MustCompile(`^00-[0-9a-f]{32}-[0-9a-f]{16}-01$`).MatchString(tp) || tp[3:35] != r.ID[:32] {
 		t.Errorf("traceparent %q does not follow the run %s", tp, r.ID)

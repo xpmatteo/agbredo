@@ -46,7 +46,7 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 			return nil
 		}
 	}
-	if gh.ID != r.GitHubRunID || gh.Attempt != r.RunAttempt || gh.Workflow != r.Deployment.Workflow || !refMatches(r.Deployment.Ref, gh.Ref) {
+	if gh.ID != r.GitHubRunID || gh.Attempt != r.RunAttempt || gh.Workflow != r.Deployment.Workflow {
 		return ErrUnauthorized
 	}
 	r.Status = statusFromGitHub(r.Status, gh)
