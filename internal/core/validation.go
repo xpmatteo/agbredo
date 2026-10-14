@@ -16,9 +16,6 @@ var secretPattern = regexp.MustCompile(`(?i)(bearer\s+\S+|(?:gh[pousr]_|github_p
 
 func Redact(s string) string { return secretPattern.ReplaceAllString(s, "[REDACTED]") }
 func ValidateAgent(a Agent) error {
-	if a.Mode != "" && a.Mode != "managed" && a.Mode != "observe" {
-		return fmt.Errorf("agent mode must be observe or managed")
-	}
 	if strings.TrimSpace(a.Name) == "" || len(a.Name) > 120 {
 		return fmt.Errorf("name must contain 1–120 characters")
 	}
@@ -28,8 +25,8 @@ func ValidateAgent(a Agent) error {
 	if !owner.MatchString(a.Owner) || !slug.MatchString(a.Repository) || len(a.Owner) > 39 || len(a.Repository) > 100 || a.Repository == "." || a.Repository == ".." {
 		return fmt.Errorf("provide a valid GitHub owner and repository")
 	}
-	if !file.MatchString(a.Workflow) || (a.Mode != "observe" && (!file.MatchString(a.ContinuationWorkflow) || a.Workflow == a.ContinuationWorkflow)) {
-		return fmt.Errorf("provide distinct initial and continuation workflow filenames ending in .yml or .yaml")
+	if !file.MatchString(a.Workflow) {
+		return fmt.Errorf("provide a workflow filename ending in .yml or .yaml")
 	}
 	if !validRef(a.Ref) {
 		return fmt.Errorf("provide a valid Git branch or tag reference")
@@ -57,29 +54,11 @@ func refMatches(configured, actual string) bool {
 	}
 	return actual == "refs/heads/"+configured
 }
-func validateProposal(p Proposal, a Agent) error {
-	if p.Action != "create_issue" || p.Resource != a.Owner+"/"+a.Repository {
-		return fmt.Errorf("only issue creation in the registered repository is supported")
-	}
-	if strings.TrimSpace(p.Title) == "" || len(p.Title) > 200 || len(p.Body) > 12000 {
-		return fmt.Errorf("issue title or body exceeds limits")
-	}
-	if strings.Contains(p.Body, "agbredo-approval:") {
-		return fmt.Errorf("proposal cannot contain reserved execution markers")
-	}
-	if Redact(p.Body) != p.Body || Redact(p.Title) != p.Title {
-		return fmt.Errorf("proposal contains apparent credentials; remove secrets before proposing an action")
-	}
-	return nil
-}
 func Terminal(s string) bool { return s == "completed" || s == "failed" || s == "cancelled" }
 
-// Terminal states never regress. Approval state is controlled by decisions, not runner events.
+// Terminal states never regress.
 func Transition(current, next string) string {
 	if Terminal(current) {
-		return current
-	}
-	if current == "waiting_approval" {
 		return current
 	}
 	if next == "running" && (current == "queued" || current == "running") {

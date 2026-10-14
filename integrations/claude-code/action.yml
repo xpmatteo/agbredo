@@ -1,8 +1,8 @@
 name: Report existing Claude Code execution
-description: Observe an unchanged Claude action or existing command with runner-local telemetry and sanitized Agbredo reporting
+description: Report an unchanged Claude action or existing command with runner-local telemetry and sanitized Agbredo reporting
 inputs:
   mode:
-    description: run wraps a command; start/finish observe an unchanged uses step
+    description: run wraps a command; start/finish report an unchanged uses step
     default: run
   action-outcome:
     description: In finish mode, pass steps.your_claude_step.outcome (not an invented CLI exit code)
@@ -11,7 +11,7 @@ inputs:
     description: Public Agbredo HTTPS origin
     required: true
   agent-id:
-    description: Registered observation agent ID
+    description: Registered Agbredo agent ID
     required: true
   command:
     description: Existing shell command or script, executed unchanged with bash

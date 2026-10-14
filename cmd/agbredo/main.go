@@ -86,14 +86,7 @@ func run(logger *slog.Logger) error {
 	if len(secret) < 32 {
 		return errors.New("AGBREDO_GITHUB_WEBHOOK_SECRET must contain at least 32 random characters")
 	}
-	ttl := 24 * time.Hour
-	if value := os.Getenv("AGBREDO_APPROVAL_TTL"); value != "" {
-		ttl, err = time.ParseDuration(value)
-		if err != nil || ttl < time.Minute || ttl > 7*24*time.Hour {
-			return errors.New("AGBREDO_APPROVAL_TTL must be a duration between 1m and 168h")
-		}
-	}
-	service := &core.Service{DB: pool, Backend: backend, BaseURL: baseURL, ApprovalTTL: ttl, Admins: admins}
+	service := &core.Service{DB: pool, Backend: backend}
 	mux := http.NewServeMux()
 	login.Register(mux)
 	dashboard := http.NewServeMux()

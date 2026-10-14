@@ -25,22 +25,19 @@ type API struct {
 }
 
 func (a *API) Register(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/agents/{id}/observations", a.observation)
-	mux.HandleFunc("POST /api/runs/{id}/events", a.events)
-	mux.HandleFunc("GET /api/approvals/{id}", a.approval)
-	mux.HandleFunc("POST /api/approvals/{id}/execute", a.execute)
+	mux.HandleFunc("POST /api/agents/{id}/observations", a.report)
 	mux.HandleFunc("POST /api/github/webhook", a.webhook)
 }
-func (a *API) observation(w http.ResponseWriter, r *http.Request) {
+func (a *API) report(w http.ResponseWriter, r *http.Request) {
 	identity, ok := a.identity(w, r)
 	if !ok {
 		return
 	}
-	var o core.Observation
+	var o core.Report
 	if !decode(w, r, &o) {
 		return
 	}
-	run, accepted, err := a.Service.Observe(r.Context(), r.PathValue("id"), o, identity)
+	run, accepted, err := a.Service.Report(r.Context(), r.PathValue("id"), o, identity)
 	if err != nil {
 		a.failure(w, err)
 		return
@@ -94,54 +91,6 @@ func (a *API) failure(w http.ResponseWriter, err error) {
 		http.Error(w, "Request failed; inspect Agbredo run history and server logs", 500)
 	}
 }
-func (a *API) events(w http.ResponseWriter, r *http.Request) {
-	identity, ok := a.identity(w, r)
-	if !ok {
-		return
-	}
-	var e core.Event
-	if !decode(w, r, &e) {
-		return
-	}
-	accepted, err := a.Service.Ingest(r.Context(), r.PathValue("id"), e, identity)
-	if err != nil {
-		a.failure(w, err)
-		return
-	}
-	write(w, map[string]bool{"accepted": accepted})
-}
-func (a *API) approval(w http.ResponseWriter, r *http.Request) {
-	identity, ok := a.identity(w, r)
-	if !ok {
-		return
-	}
-	approval, err := a.Service.RunnerApproval(r.Context(), r.PathValue("id"), identity)
-	if err != nil {
-		a.failure(w, err)
-		return
-	}
-	write(w, approval)
-}
-func (a *API) execute(w http.ResponseWriter, r *http.Request) {
-	identity, ok := a.identity(w, r)
-	if !ok {
-		return
-	}
-	var request struct {
-		RunID         string `json:"run_id"`
-		CorrelationID string `json:"correlation_id"`
-		PayloadHash   string `json:"payload_hash"`
-	}
-	if !decode(w, r, &request) {
-		return
-	}
-	approval, err := a.Service.Execute(r.Context(), r.PathValue("id"), request.RunID, request.CorrelationID, request.PayloadHash, identity)
-	if err != nil {
-		a.failure(w, err)
-		return
-	}
-	write(w, approval)
-}
 func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	body, err := io.ReadAll(r.Body)
@@ -172,8 +121,7 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 			FullName string `json:"full_name"`
 		} `json:"repository"`
 		WorkflowRun struct {
-			ID           int64  `json:"id"`
-			DisplayTitle string `json:"display_title"`
+			ID int64 `json:"id"`
 		} `json:"workflow_run"`
 	}
 	if json.Unmarshal(body, &payload) != nil || payload.WorkflowRun.ID <= 0 {
@@ -182,7 +130,7 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
-	if err = a.Service.Webhook(ctx, delivery, payload.Repository.FullName, payload.WorkflowRun.ID, payload.WorkflowRun.DisplayTitle); err != nil {
+	if err = a.Service.Webhook(ctx, delivery, payload.Repository.FullName, payload.WorkflowRun.ID); err != nil {
 		a.failure(w, err)
 		return
 	}

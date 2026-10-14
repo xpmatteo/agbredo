@@ -49,9 +49,6 @@ func requestAPI(a *API, method, path, body string, headers map[string]string) *h
 func TestRunnerRoutesRejectUnauthenticatedRequestsBeforeService(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
 		{http.MethodPost, "/api/agents/agent/observations"},
-		{http.MethodPost, "/api/runs/run/events"},
-		{http.MethodGet, "/api/approvals/approval"},
-		{http.MethodPost, "/api/approvals/approval/execute"},
 	} {
 		for _, authorization := range []string{"", "Basic unrelated", "Bearer " + strings.Repeat("a", 16384)} {
 			v := &fakeVerifier{}
@@ -74,7 +71,7 @@ func TestRunnerRoutesRejectUnauthenticatedRequestsBeforeService(t *testing.T) {
 func TestRunnerIdentityUsesVerifiedClaims(t *testing.T) {
 	expected := core.Identity{Repository: "owner/repo", Workflow: "owner/repo/.github/workflows/agent.yml@refs/heads/main", Ref: "refs/heads/main", RunID: 42, RunAttempt: 1}
 	v := &fakeVerifier{identity: expected}
-	r := httptest.NewRequest(http.MethodPost, "/api/runs/run/events", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/agents/agent/observations", nil)
 	r.Header.Set("Authorization", "Bearer signed-token")
 	w := httptest.NewRecorder()
 	got, ok := testAPI(v).identity(w, r)
@@ -84,7 +81,7 @@ func TestRunnerIdentityUsesVerifiedClaims(t *testing.T) {
 }
 
 func TestAuthenticatedRunnerRejectsMalformedAndOversizedJSON(t *testing.T) {
-	for _, path := range []string{"/api/runs/run/events", "/api/approvals/approval/execute", "/api/agents/agent/observations"} {
+	for _, path := range []string{"/api/agents/agent/observations"} {
 		for _, body := range []string{``, `{`, `[]`, `{"unknown_field":true}`, `{} {}`, `{} trailing`, `{"id":"` + strings.Repeat("a", 65536) + `"}`} {
 			v := &fakeVerifier{identity: core.Identity{Repository: "owner/repo", RunID: 1}}
 			w := requestAPI(testAPI(v), http.MethodPost, path, body, map[string]string{"Authorization": "Bearer valid-token", "Content-Type": "application/json"})
@@ -111,7 +108,7 @@ func TestDecodeRequiresOneKnownJSONObject(t *testing.T) {
 	}
 }
 
-func TestObservationPayloadRejectsOpaqueTelemetryAndCredentialFields(t *testing.T) {
+func TestReportPayloadRejectsOpaqueTelemetryAndCredentialFields(t *testing.T) {
 	for _, body := range []string{`{"CLAUDE_CODE_OAUTH_TOKEN":"sensitive"}`, `{"metadata":{"token":"sensitive"}}`, `{"usage":{"api_key":"sensitive"}}`, `{"exit_code":0.5}`, `{"estimated_cost_micros":-0.5}`} {
 		v := &fakeVerifier{identity: core.Identity{Repository: "owner/repo", RunID: 1}}
 		w := requestAPI(testAPI(v), http.MethodPost, "/api/agents/agent/observations", body, map[string]string{"Authorization": "Bearer valid-oidc"})

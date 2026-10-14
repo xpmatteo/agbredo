@@ -33,14 +33,6 @@ func saveRun(ctx context.Context, tx pgx.Tx, r Run) error {
 	_, err = tx.Exec(ctx, "UPDATE runs SET document=$2,status=$3,updated_at=now() WHERE id=$1", r.ID, data, r.Status)
 	return err
 }
-func saveApproval(ctx context.Context, tx pgx.Tx, a Approval) error {
-	data, err := json.Marshal(a)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, "UPDATE approvals SET document=$2,status=$3 WHERE id=$1", a.ID, data, a.Status)
-	return err
-}
 func insertEvent(ctx context.Context, tx pgx.Tx, e Event) (bool, error) {
 	data, err := json.Marshal(e)
 	if err != nil {
@@ -48,10 +40,6 @@ func insertEvent(ctx context.Context, tx pgx.Tx, e Event) (bool, error) {
 	}
 	tag, err := tx.Exec(ctx, "INSERT INTO events(run_id,id,document) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", e.RunID, e.ID, data)
 	return tag.RowsAffected() == 1, err
-}
-func audit(ctx context.Context, tx pgx.Tx, r Run, kind, actor, message string) error {
-	_, err := insertEvent(ctx, tx, Event{ID: ID(), RunID: r.ID, CorrelationID: r.CorrelationID, AgentID: r.Agent.ID, AgentVersion: r.Agent.Version, Timestamp: now(), Type: kind, Status: r.Status, Message: Redact(message), Metadata: mustJSON(map[string]string{"actor": actor})})
-	return err
 }
 func mustJSON(v any) json.RawMessage {
 	b, err := json.Marshal(v)

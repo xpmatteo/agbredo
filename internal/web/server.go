@@ -25,11 +25,8 @@ type Service interface {
 	Agent(context.Context, string) (core.Agent, error)
 	SaveAgent(context.Context, core.Agent) (core.Agent, error)
 	DeleteAgent(context.Context, string) error
-	Launch(context.Context, string, string) (core.Run, error)
 	Run(context.Context, string) (core.Run, error)
 	Events(context.Context, string) ([]core.Event, error)
-	Approval(context.Context, string) (core.Approval, error)
-	Decide(context.Context, string, string, string, string) error
 }
 
 type Auth interface {
@@ -45,18 +42,16 @@ type Server struct {
 }
 
 type page struct {
-	Title                   string
-	User                    string
-	CSRF                    string
-	Fleet                   core.Fleet
-	Agent                   core.Agent
-	Run                     core.Run
-	Approval                core.Approval
-	Events                  []core.Event
-	RunApprovals            []core.Approval
-	Active, Failed, Pending int
-	Spending                int64
-	Error                   string
+	Title          string
+	User           string
+	CSRF           string
+	Fleet          core.Fleet
+	Agent          core.Agent
+	Run            core.Run
+	Events         []core.Event
+	Active, Failed int
+	Spending       int64
+	Error          string
 }
 
 func New(service Service, auth Auth) *Server {
@@ -70,7 +65,7 @@ func New(service Service, auth Auth) *Server {
 			return "$" + money(*n)
 		},
 		"runCost": func(r core.Run) string {
-			if r.Agent.Mode == "observe" && !r.EstimatedCostAvailable {
+			if !r.EstimatedCostAvailable {
 				return "Unavailable"
 			}
 			return "$" + money(r.CostMicros)
@@ -82,7 +77,6 @@ func New(service Service, auth Auth) *Server {
 			}
 			return t.UTC().Format("2006-01-02 15:04:05 UTC")
 		},
-		"pending": func(a core.Approval) bool { return a.Status == "pending" && time.Now().Before(a.ExpiresAt) },
 	}
 	return &Server{service: service, auth: auth, templates: template.Must(template.New("pages").Funcs(funcs).ParseFS(assets, "templates.html"))}
 }
@@ -94,13 +88,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /agents/{id}", s.protect(s.agent, false))
 	mux.HandleFunc("POST /agents/{id}", s.protect(s.saveAgent, true))
 	mux.HandleFunc("POST /agents/{id}/delete", s.protect(s.deleteAgent, true))
-	mux.HandleFunc("POST /agents/{id}/launch", s.protect(s.launch, true))
 	mux.HandleFunc("GET /runs", s.protect(s.runs, false))
 	mux.HandleFunc("GET /runs/{id}", s.protect(s.run, false))
-	mux.HandleFunc("GET /approvals", s.protect(s.approvals, false))
-	mux.HandleFunc("GET /approvals/{id}", s.protect(s.approval, false))
-	mux.HandleFunc("POST /approvals/{id}", s.protect(s.decide, true))
-	mux.HandleFunc("POST /approvals/{id}/retry", s.protect(s.retry, true))
 	mux.HandleFunc("GET /static/style.css", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		w.Header().Set("Cache-Control", "public, max-age=3600")
@@ -167,17 +156,12 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	p := page{Title: "Agbredo — Agent Fleet Control Plane", Fleet: f}
 	for _, run := range f.Runs {
 		switch run.Status {
-		case "queued", "running", "waiting_approval":
+		case "queued", "running":
 			p.Active++
 		case "failed":
 			p.Failed++
 		}
 		p.Spending += run.CostMicros
-	}
-	for _, a := range f.Approvals {
-		if a.Status == "pending" && time.Now().Before(a.ExpiresAt) {
-			p.Pending++
-		}
 	}
 	s.render(w, r, "dashboard", p)
 }
@@ -188,7 +172,7 @@ func (s *Server) agents(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "agents", page{Title: "Agent registry", Fleet: f, Agent: core.Agent{Ref: "main", Workflow: "agbredo-agent.yml", ContinuationWorkflow: "agbredo-continue.yml", Enabled: true}})
+	s.render(w, r, "agents", page{Title: "Agent registry", Fleet: f, Agent: core.Agent{Ref: "main", Enabled: true}})
 }
 
 func (s *Server) agent(w http.ResponseWriter, r *http.Request) {
@@ -219,7 +203,7 @@ func (s *Server) saveAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a := core.Agent{ID: r.PathValue("id"), Mode: strings.TrimSpace(r.FormValue("mode")), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), ContinuationWorkflow: strings.TrimSpace(r.FormValue("continuation_workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, BudgetMicros: budget, Enabled: r.FormValue("enabled") == "on", Version: version}
+	a := core.Agent{ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, BudgetMicros: budget, Enabled: r.FormValue("enabled") == "on", Version: version}
 	if err := core.ValidateAgent(a); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -238,15 +222,6 @@ func (s *Server) deleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/agents", http.StatusSeeOther)
-}
-
-func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
-	run, err := s.service.Launch(r.Context(), r.PathValue("id"), s.auth.User(r))
-	if err != nil {
-		s.failure(w, err)
-		return
-	}
-	http.Redirect(w, r, "/runs/"+run.ID, http.StatusSeeOther)
 }
 
 func (s *Server) runs(w http.ResponseWriter, r *http.Request) {
@@ -269,69 +244,7 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	f, err := s.service.Fleet(r.Context())
-	if err != nil {
-		s.failure(w, err)
-		return
-	}
-	p := page{Title: run.Agent.Name + " · Run", Run: run, Events: events}
-	for _, a := range f.Approvals {
-		if a.RunID == run.ID {
-			p.RunApprovals = append(p.RunApprovals, a)
-		}
-	}
-	s.render(w, r, "run", p)
-}
-
-func (s *Server) approvals(w http.ResponseWriter, r *http.Request) {
-	f, err := s.service.Fleet(r.Context())
-	if err != nil {
-		s.failure(w, err)
-		return
-	}
-	s.render(w, r, "approvals", page{Title: "Approval queue and history", Fleet: f})
-}
-
-func (s *Server) approval(w http.ResponseWriter, r *http.Request) {
-	a, err := s.service.Approval(r.Context(), r.PathValue("id"))
-	if err != nil {
-		s.failure(w, err)
-		return
-	}
-	s.render(w, r, "approval", page{Title: "Review proposed action", Approval: a})
-}
-
-func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
-	decision := r.FormValue("decision")
-	if decision != "approve" && decision != "reject" {
-		http.Error(w, "Choose approve or reject.", http.StatusBadRequest)
-		return
-	}
-	reason := strings.TrimSpace(r.FormValue("reason"))
-	if len(reason) > 2000 {
-		http.Error(w, "Decision reason must be 2,000 characters or fewer.", http.StatusBadRequest)
-		return
-	}
-	if err := s.service.Decide(r.Context(), r.PathValue("id"), s.auth.User(r), decision, reason); err != nil {
-		s.failure(w, err)
-		return
-	}
-	http.Redirect(w, r, "/approvals/"+r.PathValue("id"), http.StatusSeeOther)
-}
-
-func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
-	service, ok := s.service.(interface {
-		Retry(context.Context, string, string) error
-	})
-	if !ok {
-		http.Error(w, "Continuation retry is unavailable.", http.StatusNotImplemented)
-		return
-	}
-	if err := service.Retry(r.Context(), r.PathValue("id"), s.auth.User(r)); err != nil {
-		s.failure(w, err)
-		return
-	}
-	http.Redirect(w, r, "/approvals/"+r.PathValue("id"), http.StatusSeeOther)
+	s.render(w, r, "run", page{Title: run.Agent.Name + " · Run", Run: run, Events: events})
 }
 
 func money(micros int64) string { return fmt.Sprintf("%d.%06d", micros/1_000_000, micros%1_000_000) }
@@ -373,12 +286,6 @@ func measured(n *int64) string {
 	return strconv.FormatInt(*n, 10)
 }
 func runTokens(r core.Run, kind string) string {
-	if r.Agent.Mode != "observe" {
-		if kind == "input" {
-			return strconv.FormatInt(r.InputTokens, 10)
-		}
-		return strconv.FormatInt(r.OutputTokens, 10)
-	}
 	if r.ClaudeUsage == nil {
 		return "Unavailable"
 	}

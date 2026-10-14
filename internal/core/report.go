@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-
-	"github.com/jackc/pgx/v5"
 )
 
 // ClaudeUsage keeps absent measurements distinct from a measured zero. Input
@@ -20,10 +18,10 @@ type ClaudeUsage struct {
 	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
 }
 
-// Observation is an allowlist, not a container for Claude output, OTLP payloads,
+// Report is an allowlist, not a container for Claude output, OTLP payloads,
 // environment variables or credentials. Costs are estimates of API consumption;
 // subscription billing and remaining subscription quota are not measured here.
-type Observation struct {
+type Report struct {
 	GitHubRunID         int64        `json:"github_run_id"`
 	GitHubRunAttempt    int64        `json:"github_run_attempt"`
 	Source              string       `json:"source"`
@@ -43,7 +41,7 @@ type Observation struct {
 
 var claudeVersion = regexp.MustCompile(`^(unknown|[0-9]+\.[0-9]+\.[0-9]+)$`)
 
-func (o Observation) validate() error {
+func (o Report) validate() error {
 	if !slug.MatchString(o.Source) || len(o.Source) > 80 || !claudeVersion.MatchString(o.Version) || len(o.Version) > 40 {
 		return invalid("provide a stable reporting source and Claude Code version")
 	}
@@ -57,7 +55,7 @@ func (o Observation) validate() error {
 		return invalid("measurements require received Claude telemetry")
 	}
 	if o.Phase != "started" && o.Phase != "finished" {
-		return invalid("observation phase must be started or finished")
+		return invalid("report phase must be started or finished")
 	}
 	if o.ActionOutcome != "" && o.ActionOutcome != "success" && o.ActionOutcome != "failure" && o.ActionOutcome != "cancelled" && o.ActionOutcome != "skipped" {
 		return invalid("invalid GitHub action outcome")
@@ -66,7 +64,7 @@ func (o Observation) validate() error {
 		return invalid("report either a process exit code or an action outcome")
 	}
 	if (o.Phase == "started" && (o.ExitCode != nil || o.ActionOutcome != "" || o.Usage != nil || o.EstimatedCostMicros != nil || o.APIErrors != 0 || o.DurationMS != 0)) || (o.Phase == "finished" && o.ExitCode == nil && o.ActionOutcome == "") {
-		return invalid("only a finished observation may report execution results")
+		return invalid("only a finished report may report execution results")
 	}
 	if o.ExitCode != nil && (*o.ExitCode < 0 || *o.ExitCode > 255) {
 		return invalid("exit code must be between 0 and 255")
@@ -84,21 +82,22 @@ func (o Observation) validate() error {
 	return nil
 }
 
-func observedID(agent string, run int64, attempt int64) string {
+// The "observe:" prefix is kept so IDs of runs stored earlier stay stable.
+func reportRunID(agent string, run int64, attempt int64) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("observe:%s:%d:%d", agent, run, attempt)))
 	return hex.EncodeToString(h[:])
 }
 
-func verifyObservation(a Agent, i Identity, gh WorkflowRun) error {
-	if a.Mode != "observe" || i.Repository != a.Owner+"/"+a.Repository || i.Workflow != a.Workflow || !refMatches(a.Ref, i.Ref) || i.RunID <= 0 || i.RunAttempt <= 0 || gh.ID != i.RunID || gh.Attempt != i.RunAttempt || gh.Workflow != a.Workflow || !refMatches(a.Ref, gh.Ref) {
+func verifyReport(a Agent, i Identity, gh WorkflowRun) error {
+	if i.Repository != a.Owner+"/"+a.Repository || i.Workflow != a.Workflow || !refMatches(a.Ref, i.Ref) || i.RunID <= 0 || i.RunAttempt <= 0 || gh.ID != i.RunID || gh.Attempt != i.RunAttempt || gh.Workflow != a.Workflow || !refMatches(a.Ref, gh.Ref) {
 		return ErrUnauthorized
 	}
 	return nil
 }
 
-// Observe binds independently triggered workflows using their signed GitHub
-// identity. It never dispatches a workflow or creates an approval/action.
-func (s *Service) Observe(ctx context.Context, agentID string, o Observation, i Identity) (Run, bool, error) {
+// Report binds independently triggered workflows using their signed GitHub
+// identity. It never dispatches a workflow or performs an action.
+func (s *Service) Report(ctx context.Context, agentID string, o Report, i Identity) (Run, bool, error) {
 	if o.GitHubRunID != i.RunID || o.GitHubRunAttempt != i.RunAttempt || i.RunID <= 0 || i.RunAttempt <= 0 {
 		return Run{}, false, ErrUnauthorized
 	}
@@ -110,7 +109,7 @@ func (s *Service) Observe(ctx context.Context, agentID string, o Observation, i 
 		return Run{}, false, err
 	}
 	defer tx.Rollback(ctx)
-	id := observedID(agentID, i.RunID, i.RunAttempt)
+	id := reportRunID(agentID, i.RunID, i.RunAttempt)
 	r, err := readJSON[Run](ctx, tx, "SELECT document FROM runs WHERE id=$1", id)
 	if err != nil && err != ErrNotFound {
 		return r, false, err
@@ -129,12 +128,13 @@ func (s *Service) Observe(ctx context.Context, agentID string, o Observation, i 
 	if err != nil {
 		return r, false, err
 	}
-	if err = verifyObservation(a, i, gh); err != nil {
+	if err = verifyReport(a, i, gh); err != nil {
 		return r, false, err
 	}
 	if r.ID == "" {
 		r = Run{ID: id, CorrelationID: id, Agent: a, RunAttempt: i.RunAttempt, Status: "running", BudgetMicros: a.BudgetMicros, CreatedAt: now(), UpdatedAt: now()}
-		_ = bindInitial(&r, i)
+		r.GitHubRunID = i.RunID
+		r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, i.RunID)
 		if _, err = tx.Exec(ctx, "INSERT INTO runs(id,agent_id,correlation_id,status,document) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING", id, a.ID, id, r.Status, mustJSON(r)); err != nil {
 			return r, false, err
 		}
@@ -144,7 +144,7 @@ func (s *Service) Observe(ctx context.Context, agentID string, o Observation, i 
 		return r, false, err
 	}
 	// A racing first report must also match the snapshot which won insertion.
-	if err = verifyObservation(r.Agent, i, gh); err != nil {
+	if err = verifyReport(r.Agent, i, gh); err != nil {
 		return r, false, err
 	}
 	status := "running"
@@ -201,7 +201,7 @@ func (s *Service) Observe(ctx context.Context, agentID string, o Observation, i 
 	}
 	// The workflow can contain other steps; its lifecycle remains separate from
 	// each Claude process report. A successful process does not finish the workflow.
-	r.Status = observedStatus(r.Status, gh)
+	r.Status = reportedStatus(r.Status, gh)
 	if err = saveRun(ctx, tx, r); err != nil {
 		return r, false, err
 	}
@@ -223,7 +223,7 @@ func addMeasured(total **int64, n *int64) {
 	}
 	**total += *n
 }
-func observedStatus(current string, gh WorkflowRun) string {
+func reportedStatus(current string, gh WorkflowRun) string {
 	if gh.Status != "completed" {
 		return Transition(current, "running")
 	}
@@ -235,17 +235,4 @@ func observedStatus(current string, gh WorkflowRun) string {
 		next = "cancelled"
 	}
 	return Transition(current, next)
-}
-
-// Used by webhook/polling reconciliation without title-based dispatch binding.
-func applyObservedLifecycle(ctx context.Context, tx pgx.Tx, r Run, gh WorkflowRun) error {
-	if gh.ID != r.GitHubRunID || gh.Attempt != r.RunAttempt || gh.Workflow != r.Agent.Workflow || !refMatches(r.Agent.Ref, gh.Ref) {
-		return ErrUnauthorized
-	}
-	r.Status = observedStatus(r.Status, gh)
-	_, err := insertEvent(ctx, tx, Event{ID: fmt.Sprintf("system:github:%d:%d:%s:%s", gh.ID, gh.Attempt, gh.Status, gh.Conclusion), RunID: r.ID, CorrelationID: r.CorrelationID, AgentID: r.Agent.ID, AgentVersion: r.Agent.Version, Timestamp: now(), Type: "github.workflow_run", Status: r.Status, Message: "GitHub workflow " + gh.Status + " " + gh.Conclusion})
-	if err != nil {
-		return err
-	}
-	return saveRun(ctx, tx, r)
 }

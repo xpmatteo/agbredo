@@ -1,0 +1,29 @@
+name: Agbredo example agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Which pretend agent to run
+        type: choice
+        default: hello
+        options: [hello, play, rate-limited, spendthrift, silent, cancelled]
+
+permissions:
+  contents: read
+  id-token: write # lets the job ask GitHub for the OIDC token that authenticates its reports
+
+jobs:
+  example:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Run the pretend agent
+        env:
+          AGBREDO_URL: ${{ vars.AGBREDO_URL }}
+          AGBREDO_AGENT_ID: ${{ vars.AGBREDO_AGENT_ID }}
+          SCENARIO: ${{ inputs.scenario }}
+        run: python3 examples/hello-agent/agent.py "$SCENARIO"

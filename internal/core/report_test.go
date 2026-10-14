@@ -9,10 +9,9 @@ import (
 
 func ptr[T any](n T) *T { return &n }
 
-func observationAgent(t *testing.T, s *Service, f *fakeBackend) (Agent, Identity) {
+func reportAgent(t *testing.T, s *Service, f *fakeBackend) (Agent, Identity) {
 	t.Helper()
 	a := validAgent()
-	a.Mode, a.ContinuationWorkflow = "observe", ""
 	a, err := s.SaveAgent(context.Background(), a)
 	if err != nil {
 		t.Fatal(err)
@@ -20,21 +19,18 @@ func observationAgent(t *testing.T, s *Service, f *fakeBackend) (Agent, Identity
 	f.put(WorkflowRun{ID: 777, Attempt: 1, Title: "Existing agent title", Workflow: a.Workflow, Ref: "main", Status: "in_progress"})
 	return a, Identity{Repository: "acme/agent", Workflow: a.Workflow, Ref: "refs/heads/main", RunID: 777, RunAttempt: 1, EventName: "schedule"}
 }
-func finishedObservation() Observation {
-	return Observation{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "agent", Phase: "finished", Version: "2.1.296", ExitCode: ptr(0), TelemetrySupported: true, TelemetryReceived: true,
+func finishedReport() Report {
+	return Report{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "agent", Phase: "finished", Version: "2.1.296", ExitCode: ptr(0), TelemetrySupported: true, TelemetryReceived: true,
 		Usage:               &ClaudeUsage{InputTokens: ptr(int64(100)), OutputTokens: ptr(int64(10)), CacheReadTokens: ptr(int64(200)), CacheCreationTokens: ptr(int64(20))},
 		EstimatedCostMicros: ptr(int64(1_000_001)), APIErrors: 1, RateLimitFailures: 1, APIFailed: true}
 }
 
-func TestObservationPreservesIndependentExecutionAndDeduplicatesConsumption(t *testing.T) {
+func TestReportPreservesIndependentExecutionAndDeduplicatesConsumption(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := observationAgent(t, s, f)
-	if _, err := s.Launch(ctx, a.ID, "admin"); !errors.Is(err, ErrConflict) {
-		t.Fatalf("observe dispatched: %v", err)
-	}
-	o := finishedObservation()
-	r, inserted, err := s.Observe(ctx, a.ID, o, i)
+	a, i := reportAgent(t, s, f)
+	o := finishedReport()
+	r, inserted, err := s.Report(ctx, a.ID, o, i)
 	if err != nil || !inserted {
 		t.Fatal(err)
 	}
@@ -46,7 +42,7 @@ func TestObservationPreservesIndependentExecutionAndDeduplicatesConsumption(t *t
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, accepted, e := s.Observe(ctx, a.ID, o, i)
+			_, accepted, e := s.Report(ctx, a.ID, o, i)
 			if e != nil || accepted {
 				t.Errorf("retry was counted: %v, %v", accepted, e)
 			}
@@ -61,19 +57,9 @@ func TestObservationPreservesIndependentExecutionAndDeduplicatesConsumption(t *t
 	if err != nil || len(events) != 1 || events[0].Status != "failed" {
 		t.Fatalf("process failure was lost: %#v %v", events, err)
 	}
-	if _, err = s.Ingest(ctx, r.ID, Event{ID: "proposal", CorrelationID: r.CorrelationID, Type: "proposal", Proposal: &Proposal{}}, i); !errors.Is(err, ErrUnauthorized) {
-		t.Fatal("observation acquired managed capability", err)
-	}
-	if err = s.DispatchOne(ctx); err != nil {
-		t.Fatal(err)
-	}
-	fleet, err := s.Fleet(ctx)
-	if err != nil || len(fleet.Approvals) != 0 || f.dispatches != 0 || f.creates != 0 {
-		t.Fatal("observation had side effects", err)
-	}
 	// Webhooks use the independent workflow title and cannot regress a terminal run.
 	f.put(WorkflowRun{ID: 777, Attempt: 1, Title: "Existing agent title", Workflow: a.Workflow, Ref: "main", Status: "completed", Conclusion: "failure"})
-	if err = s.Webhook(ctx, "observation-delivery", "acme/agent", 777, "Existing agent title"); err != nil {
+	if err = s.Webhook(ctx, "report-delivery", "acme/agent", 777); err != nil {
 		t.Fatal(err)
 	}
 	r, _ = s.Run(ctx, r.ID)
@@ -82,22 +68,22 @@ func TestObservationPreservesIndependentExecutionAndDeduplicatesConsumption(t *t
 	}
 }
 
-func TestObservationMissingUsageAndSignedBinding(t *testing.T) {
+func TestReportMissingUsageAndSignedBinding(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := observationAgent(t, s, f)
-	o := Observation{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "job", Phase: "finished", Version: "unknown", ExitCode: ptr(0)}
+	a, i := reportAgent(t, s, f)
+	o := Report{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "job", Phase: "finished", Version: "unknown", ExitCode: ptr(0)}
 	for _, change := range []func(*Identity){
 		func(i *Identity) { i.Repository = "evil/repo" }, func(i *Identity) { i.Workflow = "other.yml" },
 		func(i *Identity) { i.Ref = "refs/heads/other" }, func(i *Identity) { i.RunAttempt = 2 },
 	} {
 		wrong := i
 		change(&wrong)
-		if _, _, err := s.Observe(ctx, a.ID, o, wrong); !errors.Is(err, ErrUnauthorized) {
-			t.Fatalf("unbound observation accepted: %v", err)
+		if _, _, err := s.Report(ctx, a.ID, o, wrong); !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("unbound report accepted: %v", err)
 		}
 	}
-	r, _, err := s.Observe(ctx, a.ID, o, i)
+	r, _, err := s.Report(ctx, a.ID, o, i)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +95,7 @@ func TestObservationMissingUsageAndSignedBinding(t *testing.T) {
 	o.Usage = &ClaudeUsage{InputTokens: ptr(int64(0))}
 	o.EstimatedCostMicros = ptr(int64(0))
 	o.TelemetryReceived = true
-	r, _, err = s.Observe(ctx, a.ID, o, i)
+	r, _, err = s.Report(ctx, a.ID, o, i)
 	if err != nil || r.ClaudeUsage.InputTokens == nil || r.ClaudeUsage.OutputTokens != nil || !r.EstimatedCostAvailable {
 		t.Fatal("zero measurement lost", err)
 	}
@@ -119,27 +105,27 @@ func TestObservationMissingUsageAndSignedBinding(t *testing.T) {
 	}
 	r, _ = s.Run(ctx, r.ID)
 	if r.Status != "completed" {
-		t.Fatal("successful observed workflow requires an invented managed final event")
+		t.Fatal("successful observed workflow needs no extra final event")
 	}
 	// A rerun has a new immutable run and fresh accounting.
 	i.RunAttempt = 2
 	o.GitHubRunAttempt = 2
 	f.put(WorkflowRun{ID: 777, Attempt: 2, Workflow: a.Workflow, Ref: "main", Status: "in_progress"})
-	rerun, _, err := s.Observe(ctx, a.ID, o, i)
+	rerun, _, err := s.Report(ctx, a.ID, o, i)
 	if err != nil || rerun.ID == r.ID || rerun.RunAttempt != 2 {
 		t.Fatal("rerun merged into prior attempt", err)
 	}
 }
 
-func TestObservationValidation(t *testing.T) {
-	for _, change := range []func(*Observation){
-		func(o *Observation) { o.Source = "a/b" }, func(o *Observation) { o.Version = "secret=value" },
-		func(o *Observation) { o.ExitCode = nil }, func(o *Observation) { o.ExitCode = ptr(-1) },
-		func(o *Observation) { o.EstimatedCostMicros = ptr(int64(-1)) },
-		func(o *Observation) { o.Usage.CacheReadTokens = ptr(int64(-1)) },
-		func(o *Observation) { o.RateLimitFailures = 2 }, func(o *Observation) { o.Phase = "started" },
+func TestReportValidation(t *testing.T) {
+	for _, change := range []func(*Report){
+		func(o *Report) { o.Source = "a/b" }, func(o *Report) { o.Version = "secret=value" },
+		func(o *Report) { o.ExitCode = nil }, func(o *Report) { o.ExitCode = ptr(-1) },
+		func(o *Report) { o.EstimatedCostMicros = ptr(int64(-1)) },
+		func(o *Report) { o.Usage.CacheReadTokens = ptr(int64(-1)) },
+		func(o *Report) { o.RateLimitFailures = 2 }, func(o *Report) { o.Phase = "started" },
 	} {
-		o := finishedObservation()
+		o := finishedReport()
 		change(&o)
 		if o.validate() == nil {
 			t.Fatalf("invalid report accepted: %#v", o)
@@ -147,16 +133,16 @@ func TestObservationValidation(t *testing.T) {
 	}
 }
 
-func TestObservationConcurrentFirstReportsKeepOneSnapshot(t *testing.T) {
+func TestReportConcurrentFirstReportsKeepOneSnapshot(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := observationAgent(t, s, f)
+	a, i := reportAgent(t, s, f)
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, _, err := s.Observe(ctx, a.ID, finishedObservation(), i); err != nil {
+			if _, _, err := s.Report(ctx, a.ID, finishedReport(), i); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -172,31 +158,21 @@ func TestObservationConcurrentFirstReportsKeepOneSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	o := finishedObservation()
+	o := finishedReport()
 	o.Source = "next-step"
-	r, _, err := s.Observe(ctx, a.ID, o, i)
+	r, _, err := s.Report(ctx, a.ID, o, i)
 	if err != nil || r.Agent.Version != 1 || r.CostMicros != 2_000_002 {
 		t.Fatalf("historical snapshot changed: %#v %v", r, err)
 	}
 }
 
-func TestNewObservationTriggersCannotUseManagedCapabilities(t *testing.T) {
+func TestReportSavedReportCannotMoveToAnotherAttempt(t *testing.T) {
 	s, f := testService(t)
-	r, i := launched(t, s, f)
-	i.EventName = "schedule"
-	_, err := s.Ingest(context.Background(), r.ID, Event{ID: "forbidden", CorrelationID: r.CorrelationID, Type: "status"}, i)
-	if !errors.Is(err, ErrUnauthorized) {
-		t.Fatal("non-dispatch trigger gained managed capability", err)
-	}
-}
-
-func TestObservationSavedReportCannotMoveToAnotherAttempt(t *testing.T) {
-	s, f := testService(t)
-	a, i := observationAgent(t, s, f)
-	o := finishedObservation()
+	a, i := reportAgent(t, s, f)
+	o := finishedReport()
 	i.RunAttempt = 2
 	f.put(WorkflowRun{ID: 777, Attempt: 2, Workflow: a.Workflow, Ref: "main", Status: "in_progress"})
-	if _, _, err := s.Observe(context.Background(), a.ID, o, i); !errors.Is(err, ErrUnauthorized) {
+	if _, _, err := s.Report(context.Background(), a.ID, o, i); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("saved report moved to a different attempt", err)
 	}
 	fleet, err := s.Fleet(context.Background())
@@ -205,12 +181,12 @@ func TestObservationSavedReportCannotMoveToAnotherAttempt(t *testing.T) {
 	}
 }
 
-func TestObservationExistingActionOutcomeDoesNotFabricateExitCode(t *testing.T) {
+func TestReportExistingActionOutcomeDoesNotFabricateExitCode(t *testing.T) {
 	s, f := testService(t)
-	a, i := observationAgent(t, s, f)
-	o := finishedObservation()
+	a, i := reportAgent(t, s, f)
+	o := finishedReport()
 	o.ExitCode, o.ActionOutcome = nil, "failure"
-	r, _, err := s.Observe(context.Background(), a.ID, o, i)
+	r, _, err := s.Report(context.Background(), a.ID, o, i)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -31,19 +31,17 @@ func ID() string {
 }
 
 type Agent struct {
-	Mode                 string `json:"mode,omitempty"` // observe or managed; empty preserves legacy managed agents
-	ID                   string `json:"id"`
-	Name                 string `json:"name"`
-	Description          string `json:"description"`
-	Owner                string `json:"owner"`
-	Repository           string `json:"repository"`
-	Workflow             string `json:"workflow"`
-	ContinuationWorkflow string `json:"continuation_workflow"`
-	Ref                  string `json:"ref"`
-	InstallationID       int64  `json:"installation_id"`
-	BudgetMicros         int64  `json:"budget_micros"`
-	Enabled              bool   `json:"enabled"`
-	Version              int64  `json:"version"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	Owner          string `json:"owner"`
+	Repository     string `json:"repository"`
+	Workflow       string `json:"workflow"`
+	Ref            string `json:"ref"`
+	InstallationID int64  `json:"installation_id"`
+	BudgetMicros   int64  `json:"budget_micros"`
+	Enabled        bool   `json:"enabled"`
+	Version        int64  `json:"version"`
 }
 
 type Run struct {
@@ -67,35 +65,9 @@ type Run struct {
 	UpdatedAt              time.Time    `json:"updated_at"`
 }
 
-type Proposal struct {
-	Action   string `json:"action"`
-	Resource string `json:"resource"`
-	Title    string `json:"title"`
-	Body     string `json:"body"`
-}
-
-type Approval struct {
-	IgnoredRunIDs  []int64    `json:"ignored_run_ids,omitempty"`
-	ID             string     `json:"id"`
-	RunID          string     `json:"run_id"`
-	Proposal       Proposal   `json:"proposal"`
-	PayloadHash    string     `json:"payload_hash"`
-	Status         string     `json:"status"`
-	DecidedBy      string     `json:"decided_by"`
-	DecisionReason string     `json:"decision_reason"`
-	CreatedAt      time.Time  `json:"created_at"`
-	ExpiresAt      time.Time  `json:"expires_at"`
-	DecidedAt      *time.Time `json:"decided_at,omitempty"`
-	GitHubRunID    int64      `json:"github_run_id"`
-	GitHubURL      string     `json:"github_url"`
-	ResultURL      string     `json:"result_url"`
-	AttemptedAt    *time.Time `json:"attempted_at,omitempty"`
-}
-
 // Costs are deltas, expressed as integer microdollars. A stable event ID makes retries safe.
 type Event struct {
-	Claude        *Observation    `json:"claude,omitempty"`
-	ApprovalID    string          `json:"approval_id,omitempty"`
+	Claude        *Report         `json:"claude,omitempty"`
 	ID            string          `json:"id"`
 	RunID         string          `json:"run_id"`
 	CorrelationID string          `json:"correlation_id"`
@@ -112,7 +84,6 @@ type Event struct {
 	CostMicros    int64           `json:"cost_micros"`
 	Message       string          `json:"message"`
 	Error         string          `json:"error"`
-	Proposal      *Proposal       `json:"proposal,omitempty"`
 	Metadata      json.RawMessage `json:"metadata,omitempty"`
 }
 
@@ -137,16 +108,11 @@ type WorkflowRun struct {
 }
 
 type Backend interface {
-	Dispatch(context.Context, Agent, string, map[string]interface{}) error
 	GetRun(context.Context, Agent, int64) (WorkflowRun, error)
 	GetRunAttempt(context.Context, Agent, int64, int64) (WorkflowRun, error)
-	FindRuns(context.Context, Agent, string, time.Time) ([]WorkflowRun, error)
-	CreateIssue(context.Context, Agent, Proposal, string) (string, error)
-	FindIssue(context.Context, Agent, string) (string, error)
 }
 
 type Fleet struct {
-	Agents    []Agent
-	Runs      []Run
-	Approvals []Approval
+	Agents []Agent
+	Runs   []Run
 }

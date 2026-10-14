@@ -6,14 +6,14 @@ This integration runs beside Claude Code on the GitHub runner. Claude Code conti
 GitHub runner: existing secret → existing Claude Code command
                                      ↓ local OpenTelemetry
                               loopback Python receiver
-                                     ↓ typed observation + GitHub OIDC
+                                     ↓ typed report + GitHub OIDC
                               Go dashboard + PostgreSQL
 ```
 
 ## Minimal workflow change
 
 1. Copy this directory into the existing agent repository as `integrations/claude-code`. It is a local composite action, not a reusable workflow. Keep the existing workflow file, triggers, run name, checkout, Claude installation and authentication steps.
-2. Register the existing repository, workflow **filename**, Git ref and GitHub App installation ID in Agbredo. Select **Observe existing workflows**, enable reporting, and leave the continuation workflow empty. New dashboard registrations default to observation mode. Existing agents retain managed mode.
+2. Register the existing repository, workflow **filename**, Git ref and GitHub App installation ID in Agbredo. Enable reporting.
 3. Add `id-token: write` alongside the job's **existing** permission entries. Keep its other permissions intact. Replace only the existing Claude execution step with the local action and pass its original shell command as `command`:
 
 ```yaml
@@ -103,7 +103,7 @@ The dashboard displays **Unavailable** for missing token or cost measurements. A
 
 Claude process status is separate from the workflow status. The workflow may continue with other steps, recover from errors or intentionally tolerate a failed command. GitHub webhooks and polling supply its authoritative conclusion. Signed OIDC identity is bound to the registered repository, workflow and ref, and GitHub's specific run attempt. A GitHub rerun gets a separate immutable run and accounting record. No correlation inputs or custom run names are required.
 
-Observation mode creates no dispatch jobs, approvals or issues, and cannot use managed action endpoints. It discovers runs through reports, not by scanning every historical execution. If no report reaches Agbredo, that execution is not registered. Direct jobs are supported; externally called reusable workflows and pull-request OIDC identities remain excluded by the existing verifier. Scheduled, push, issue/comment and manual workflows on the registered ref can report.
+Agbredo creates no dispatches or issues and has no endpoint that acts on GitHub. It discovers runs through reports, not by scanning every historical execution. If no report reaches Agbredo, that execution is not registered. Direct jobs are supported; externally called reusable workflows and pull-request OIDC identities remain excluded by the existing verifier. Scheduled, push, issue/comment and manual workflows on the registered ref can report.
 
 ## Telemetry and failure handling
 
