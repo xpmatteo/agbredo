@@ -7,6 +7,12 @@
   "id": "ag-s99.9",
   "labels": [],
   "parent": "ag-s99",
+  "comments": [
+    {
+      "text": "Draft PR https://github.com/xpmatteo/agbredo/pull/3: Report and Event keep their names as kinds of observation; docs + run page wording. Close when merged.",
+      "timestamp": "2026-10-14T14:32:07Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Use Observation as the umbrella word for reports, telemetry and webhooks",
