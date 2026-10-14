@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Claude",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-10-14T14:40:48Z",
@@ -22,8 +22,8 @@
     }
   ],
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Drop the reporter (integrations/claude-code); telemetry is the only usage path",
   "type": "task",
-  "updated_at": "2026-10-14T14:51:44Z"
+  "updated_at": "2026-10-14T15:02:45Z"
 }
