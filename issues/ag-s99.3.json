@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Claude",
   "blocked_by": [
     "ag-s99.6"
   ],
@@ -26,8 +26,8 @@
     }
   ],
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Identify a deployment by repository + workflow file",
   "type": "task",
-  "updated_at": "2026-10-14T14:51:44Z"
+  "updated_at": "2026-10-14T15:15:40Z"
 }
