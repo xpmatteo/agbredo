@@ -2,6 +2,7 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [
+    "ag-s99.10",
     "ag-s99.2"
   ],
   "created": "2026-10-14T12:22:56Z",
@@ -13,5 +14,5 @@
   "status": "open",
   "title": "Allow reusable workflows in the OIDC check",
   "type": "task",
-  "updated_at": "2026-10-14T12:23:06Z"
+  "updated_at": "2026-10-14T12:23:07Z"
 }

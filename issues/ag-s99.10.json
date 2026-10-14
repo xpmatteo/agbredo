@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "ag-s99.1"
+  ],
   "blocks": [],
   "created": "2026-10-14T12:23:00Z",
   "description": "Pipelines live in a central repo (e.g. agbredo-agents) as reusable workflows; their files ship in composite actions (github.action_path). Reporter stays in agbredo, used as xpmatteo/agbredo/integrations/claude-code@\u003ctag\u003e. Needs release tags.",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Create the central pipelines repo and publish the reporter as a remote action",
   "type": "task",
-  "updated_at": "2026-10-14T12:23:00Z"
+  "updated_at": "2026-10-14T12:23:07Z"
 }
