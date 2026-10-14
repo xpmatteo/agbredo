@@ -1,6 +1,6 @@
 # Routes
 
-Every route the server exposes. The code is in `cmd/agbredo/main.go`, `internal/webapi/api.go`, `internal/web/server.go` and `internal/auth/auth.go`. See `design.md` for how the parts fit together.
+Every route the server exposes. The code is in `cmd/agbredo/main.go`, `internal/webapi/api.go`, `internal/web/server.go` and `internal/auth/auth.go`. See `01-design.md` for how the parts fit together.
 
 All responses carry an `X-Request-ID` header. Errors from the runner routes are plain text.
 
@@ -43,7 +43,7 @@ OpenTelemetry from Claude Code. `Authorization: Bearer agb_...`, the token from 
 - `Content-Type: application/json` (set `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`). Protobuf is not accepted. `Content-Encoding: gzip` is accepted. Up to 4 MiB, after decompression.
 - The token says which run and which source the data belongs to. Nothing in the payload is trusted for that.
 - Metrics: the server reads `claude_code.token.usage` and `claude_code.cost.usage`, delta or cumulative. Logs: it counts `api_error` events, and rate-limit errors among them. Traces: nothing is counted. A repeated export is counted once.
-- If `OTLP_FORWARD_URL` is set, the accepted payload is forwarded to the telemetry store with the run's labels added (see `design.md`). Otherwise the rest is dropped.
+- If `OTLP_FORWARD_URL` is set, the accepted payload is forwarded to the telemetry store with the run's labels added (see `01-design.md`). Otherwise the rest is dropped.
 - `200` with `{}`.
 - Errors: `401` no token, or not an `agb_` token, `415` not JSON, `400` bad gzip or JSON, `413` too large, `403` unknown or expired token, or the run has finished.
 
