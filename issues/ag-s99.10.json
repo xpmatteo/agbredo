@@ -17,7 +17,7 @@
   ],
   "priority": 2,
   "status": "open",
-  "title": "Create the central pipelines repo and publish the reporter as a remote action",
+  "title": "Publish pipelines from the central repo xpmatteo/agbredo-pipelines; pin the telemetry action by tag",
   "type": "task",
-  "updated_at": "2026-10-14T14:32:07Z"
+  "updated_at": "2026-10-14T15:01:11Z"
 }
