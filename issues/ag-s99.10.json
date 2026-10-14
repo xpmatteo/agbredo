@@ -17,11 +17,15 @@
     {
       "text": "2026-10-14, Matt decided: the reporter is dropped (ag-s99.11), so there is nothing to publish but the telemetry action, already used remotely as xpmatteo/agbredo/integrations/claude-code-otlp. Central repo = xpmatteo/agbredo-pipelines (empty today). First pipeline = rpg-interpreter's .github/workflows/agent-instructions-audit.yml. The checks file (.github/agent-instructions-checks.md) and all scripts (scripts/agent-instructions-refs.sh, the inline gate/awk/jq steps) move to the central repo for cohesion; inside a reusable workflow they are not checked out, so ship them in a composite action in the central repo (github.action_path), per the original plan. The Sarca note stays only in rpg-interpreter's caller workflow (pass it as an input, e.g. extra prompt text). rpg-interpreter keeps a caller workflow: schedule + workflow_dispatch, permissions incl. id-token: write, one uses: xpmatteo/agbredo-pipelines/.github/workflows/agent-instructions-audit.yml@v1, secrets. Matt approved: push agbredo-pipelines' first main, tag agbredo v1 (pipelines use claude-code-otlp@v1, not @main), tag agbredo-pipelines v1.",
       "timestamp": "2026-10-14T15:01:11Z"
+    },
+    {
+      "text": "2026-10-14: agbredo-pipelines main pushed at 2727b57 (pipeline + composite action, reviewed). rpg-interpreter caller on branch claude/project-thread-yn74b3 (1cf3e88). agbredo docs pin claude-code-otlp@v1 (8e6996b on the branch). This session cannot push tags (git push of tags refused). Left for Matt, in order: merge agbredo branch to main and let Railway deploy; tag agbredo v1 at that merge; tag agbredo-pipelines v1 at 2727b57; then merge rpg-interpreter's branch; set AGBREDO_URL var there; run the audit by hand and check the run on www.agbredo.com. Close after that check.",
+      "timestamp": "2026-10-14T16:07:49Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Publish pipelines from the central repo xpmatteo/agbredo-pipelines; pin the telemetry action by tag",
   "type": "task",
-  "updated_at": "2026-10-14T15:01:11Z"
+  "updated_at": "2026-10-14T16:07:49Z"
 }
