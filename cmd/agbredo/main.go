@@ -87,7 +87,11 @@ func run(logger *slog.Logger) error {
 	if len(secret) < 32 {
 		return errors.New("AGBREDO_GITHUB_WEBHOOK_SECRET must contain at least 32 random characters")
 	}
-	service := &core.Service{DB: pool, Backend: backend}
+	threshold, err := defaultThreshold(os.Getenv("AGBREDO_DEFAULT_THRESHOLD_USD"))
+	if err != nil {
+		return err
+	}
+	service := &core.Service{DB: pool, Backend: backend, DefaultThresholdMicros: threshold}
 	// Optional: forward accepted telemetry to an OTLP store such as OpenObserve.
 	// OTLP_FORWARD_URL is the OTLP base, e.g. http://openobserve:5080/api/default.
 	forwarder := forward.New(os.Getenv("OTLP_FORWARD_URL"), os.Getenv("OTLP_AUTH_TOKEN"), logger)
@@ -130,6 +134,19 @@ func run(logger *slog.Logger) error {
 	}
 	workers.Wait()
 	return nil
+}
+
+// defaultThreshold reads AGBREDO_DEFAULT_THRESHOLD_USD, the per-run threshold
+// of a deployment created by its first run, in dollars. Unset means $5.
+func defaultThreshold(raw string) (int64, error) {
+	if raw == "" {
+		return 5_000_000, nil
+	}
+	micros, err := core.ParseUSD(raw)
+	if err != nil || micros > 1_000_000_000_000 {
+		return 0, errors.New("AGBREDO_DEFAULT_THRESHOLD_USD must be a USD amount between 0 and 1000000, such as 5 or 2.50")
+	}
+	return micros, nil
 }
 
 // newMux puts every route together: sign-in, the dashboard behind the admin

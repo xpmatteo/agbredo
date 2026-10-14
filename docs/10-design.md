@@ -13,10 +13,12 @@ Agbredo shows what a fleet of existing GitHub Actions agents did and what they c
 ## Flow
 
 1. An agent's workflow runs on its own trigger (schedule, push, manual).
-2. Before each Claude Code step, the telemetry step posts to `POST /api/agents/{id}/otlp-token` with the job's OIDC token and a `source` name (the name of the agent run).
-3. The server checks the OIDC token (issuer, signature, expiry, audience = `AGBREDO_BASE_URL`). It requires that the repository and workflow file match the registered deployment. The ref is not checked: runs from any branch or tag belong to the deployment. It then asks GitHub for that run attempt, using the GitHub App, and requires that it matches.
-4. The first valid request creates the run, and records on it the ref it ran from (the OIDC `ref` claim). Later requests for the same run attempt find it.
-5. GitHub `workflow_run` webhooks and the poll set the run's status from GitHub (running, completed, failed, cancelled). Each status change adds one event to the run's history. A finished state is never reopened.
+2. Before each Claude Code step, the telemetry step posts to `POST /api/otlp-token` with the job's OIDC token and a `source` name (the name of the agent run). Older workflows post to `POST /api/agents/{id}/otlp-token` instead, naming the deployment; that route works as before.
+3. The server checks the OIDC token (issuer, signature, expiry, audience = `AGBREDO_BASE_URL`). It finds the deployment by the token's repository and workflow file (owner and repository ignore case). The ref is not checked: runs from any branch or tag belong to the deployment.
+4. If there is no such deployment, the server asks GitHub, as the GitHub App, for the App's installation on the repository (`GET /repos/{owner}/{repo}/installation`). If the App is not installed, the request is refused and nothing is stored. Otherwise the request creates the deployment: owner and repository as the token spells them (GitHub's own spelling), named `owner/repository · workflow file`, with an empty description, the default threshold (`AGBREDO_DEFAULT_THRESHOLD_USD`, $5 if unset), that installation, and enabled. People can change all of these on the dashboard. Two first requests at once end with one deployment.
+5. The server asks GitHub for that run attempt, using the App installation of the deployment, and requires that it matches. A disabled deployment gets no token for a new run. The deployment, the run and the token are stored together, or not at all.
+6. The first valid request creates the run, and records on it the ref it ran from (the OIDC `ref` claim). Later requests for the same run attempt find it.
+7. GitHub `workflow_run` webhooks and the poll set the run's status from GitHub (running, completed, failed, cancelled). Each status change adds one event to the run's history. A finished state is never reopened.
 
 ### Telemetry flow
 
@@ -35,7 +37,7 @@ A run is registered only when a token is requested. Nothing scans GitHub for old
 
 | Table | Holds |
 | --- | --- |
-| `agents` | Registered workflow: repository, workflow file, App installation, estimate threshold. Has an edit revision. Deleting hides it. A repository + workflow file is registered once among the deployments not hidden (a unique index; owner and repository ignore case). Older rows also hold a `ref`, which is no longer checked. |
+| `agents` | Deployments: name, description, repository, workflow file, App installation, estimate threshold, enabled. Created by the first valid token request of a repository + workflow file, or by hand on the dashboard. Has an edit revision. Deleting hides it; the next run of its workflow then creates a new one. A repository + workflow file appears once among the deployments not hidden (a unique index; owner and repository ignore case). Older rows also hold a `ref`, which is no longer checked. |
 | `runs` | One per workflow run attempt. Keeps a copy of the deployment as it was, and the ref the run ran from. Older runs have no ref of their own; the run page then shows the ref in their copy, if any. A trigger blocks changes to that copy. Totals: estimated cost, tokens, API and rate-limit failures. The GitHub logins of `actor` (who started the run) and `triggering_actor` (who started this attempt), from GitHub when the run is first seen. |
 | `run_tokens` | Hash, run, agent run (column `source`) and expiry of each telemetry token. |
 | `otlp_seen`, `otlp_series` | Hashes of exports already counted, and the last value of each cumulative counter. |
@@ -47,8 +49,9 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 ## Trust
 
 - **Dashboard:** GitHub OAuth login, an allowlist of GitHub users (`AGBREDO_ADMIN_USERS`), signed session cookie, CSRF token on every form.
-- **Runners:** only the short-lived OIDC token. No shared secret.
-- **Reusable workflows:** accepted. A caller workflow in the target repository may call a pipeline (a reusable workflow) in any central repository. There is no list of allowed central repositories. Trust rests on GitHub. The OIDC token, signed by GitHub, says which repository and caller workflow ran. The server then checks the run with GitHub through the GitHub App, so only registered deployments, in repositories where the App is installed, can get a telemetry token. The identity is always the caller workflow, taken from the `workflow_ref` claim. The pipeline's `job_workflow_ref` claim is never used to decide who is calling.
+- **Runners:** only the short-lived OIDC token. No shared secret, and nothing to register.
+- **Which repositories can send telemetry:** any repository where the GitHub App is installed, and nothing else. Installing the App is the only gate. No person approves a deployment: the first valid run of a workflow in such a repository creates it. The installation ID comes from GitHub, asked by the App itself, never from the runner. To stop a deployment, disable it on the dashboard. To stop a repository, uninstall the App or take the repository out of the installation.
+- **Reusable workflows:** accepted. A caller workflow in the target repository may call a pipeline (a reusable workflow) in any central repository. There is no list of allowed central repositories. Trust rests on GitHub. The OIDC token, signed by GitHub, says which repository and caller workflow ran. The server then checks the run with GitHub through the GitHub App, so only runs in repositories where the App is installed can get a telemetry token. The identity is always the caller workflow, taken from the `workflow_ref` claim. The pipeline's `job_workflow_ref` claim is never used to decide who is calling.
 - **Webhooks:** HMAC signature with the App's webhook secret.
 - **Telemetry tokens:** random, per run attempt and per agent run, 6 hours at most, refused once the run has finished. The agent's own process can read its token. With it, it can only send telemetry for its own run.
 - **Claude credentials:** never seen by the server. Telemetry arrives as raw OTLP over HTTPS. The server keeps only the fields listed above in PostgreSQL, and forwards the rest to the telemetry store if one is set. The telemetry step turns off prompt, response and tool logging. It turns on the Claude account fields (`user.account_uuid`, along with `user.email` and `organization.id` which Claude Code always sends), so the store records which Claude account did the work.
@@ -59,12 +62,15 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 - Costs are estimates of API use. The real subscription charge and the remaining quota are unknown.
 - The threshold only marks a run. It cannot stop an agent.
 - A run is matched by its caller workflow only. Agbredo does not yet record or check which pipeline or pipeline version a run used.
-- Any code that the caller workflow runs with `id-token: write` (the pipeline, or any workflow or action it calls) can get an OIDC token, and with it a telemetry token for that registered deployment.
-- The ref is not checked. A workflow file with the registered name runs on any branch or tag, so anyone who can push a branch to the repository can get a telemetry token for that deployment. Pull request events and pull request refs (`refs/pull/...`) are refused.
+- The GitHub App installation is the only gate. Anyone who can add or change a workflow in a repository where the App is installed can create a deployment and send telemetry for it, with any pipeline. Install the App only on repositories whose writers are trusted with that.
+- Any code that the caller workflow runs with `id-token: write` (the pipeline, or any workflow or action it calls) can get an OIDC token, and with it a telemetry token for that deployment, creating the deployment if it is new.
+- The ref is not checked. A workflow file with the deployment's name runs on any branch or tag, so anyone who can push a branch to the repository can get a telemetry token for that deployment. Pull request events and pull request refs (`refs/pull/...`) are refused.
 - Telemetry is accepted only as OTLP JSON (`OTEL_EXPORTER_OTLP_PROTOCOL=http/json`), not protobuf.
 - Telemetry sent after GitHub marks the run finished is refused. Claude Code sends its last export when it exits, which is before the run finishes. A job that is killed before that loses the last part of its usage.
 - Forwarding is best effort. Telemetry dropped while the store is down is not sent again. A repeated export is forwarded again, though it is counted once in PostgreSQL.
 - Retention in the telemetry store is not decided yet.
 - Run one server replica.
+- Deleting a deployment only hides it. The next run of its workflow creates a new one. Disable it instead to refuse its tokens.
+- A deployment keeps the App installation it was created with. If the App is uninstalled and installed again, the new installation has another ID, and the deployment's installation must be changed by hand on the dashboard.
 - Agbredo does not know when each agent run starts or ends, how long it took, or how its process exited. It sees usage from telemetry and status for the whole run from GitHub.
 - Stored agents may carry a `mode` field from an earlier version. It is ignored.

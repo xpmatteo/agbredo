@@ -24,6 +24,9 @@ type Backend struct {
 	apps    *ghinstallation.AppsTransport
 	mu      sync.Mutex
 	clients map[int64]*gh.Client
+	// app authenticates as the GitHub App itself (a JWT), not as an
+	// installation. Tests replace it.
+	app *gh.Client
 	// clientFor is used by tests without requesting real installation credentials.
 	clientFor func(int64) (*gh.Client, error)
 }
@@ -37,7 +40,25 @@ func New(appID int64, privateKey []byte) (*Backend, error) {
 		return nil, fmt.Errorf("configure GitHub App private key: %w", err)
 	}
 	apps.Client = &http.Client{Timeout: 20 * time.Second}
-	return &Backend{apps: apps, clients: make(map[int64]*gh.Client)}, nil
+	app := gh.NewClient(&http.Client{Transport: apps, Timeout: 30 * time.Second})
+	return &Backend{apps: apps, app: app, clients: make(map[int64]*gh.Client)}, nil
+}
+
+// Installation asks GitHub, as the App, for the App's installation on a
+// repository (GET /repos/{owner}/{repo}/installation). A 404 means the App is
+// not installed there: core.ErrNotInstalled.
+func (b *Backend) Installation(ctx context.Context, owner, repository string) (int64, error) {
+	inst, resp, err := b.app.Apps.FindRepositoryInstallation(ctx, owner, repository)
+	if resp != nil && resp.StatusCode == http.StatusNotFound {
+		return 0, core.ErrNotInstalled
+	}
+	if err != nil {
+		return 0, fmt.Errorf("find GitHub App installation: %w", err)
+	}
+	if inst.GetID() <= 0 {
+		return 0, errors.New("GitHub returned no installation ID")
+	}
+	return inst.GetID(), nil
 }
 
 func (b *Backend) client(id int64) (*gh.Client, error) {

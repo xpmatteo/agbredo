@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -14,6 +15,9 @@ var (
 	ErrConflict     = errors.New("operation conflicts with current state")
 	ErrUnauthorized = errors.New("not authorized")
 	ErrInvalid      = errors.New("invalid input")
+	// ErrNotInstalled says the GitHub App is not installed on a repository.
+	// Runners are refused, as for any other identity that does not match.
+	ErrNotInstalled = fmt.Errorf("the GitHub App is not installed on the repository: %w", ErrUnauthorized)
 )
 
 type invalidInput struct{ message string }
@@ -129,6 +133,9 @@ type WorkflowRun struct {
 type Backend interface {
 	GetRun(context.Context, Deployment, int64) (WorkflowRun, error)
 	GetRunAttempt(context.Context, Deployment, int64, int64) (WorkflowRun, error)
+	// Installation is the ID of the GitHub App installation on a repository,
+	// asked as the App itself. ErrNotInstalled when the App is not installed.
+	Installation(ctx context.Context, owner, repository string) (int64, error)
 }
 
 type Fleet struct {

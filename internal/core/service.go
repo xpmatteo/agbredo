@@ -14,6 +14,9 @@ import (
 type Service struct {
 	DB      *pgxpool.Pool
 	Backend Backend
+	// DefaultThresholdMicros is the threshold of a deployment created by its
+	// first run (see MintTokenForWorkflow).
+	DefaultThresholdMicros int64
 }
 
 func (s *Service) Deployment(ctx context.Context, id string) (Deployment, error) {

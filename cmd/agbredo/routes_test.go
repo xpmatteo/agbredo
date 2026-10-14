@@ -13,6 +13,20 @@ import (
 	"agbredo/internal/webapi"
 )
 
+// The threshold of a deployment created by its first run is $5 unless set.
+func TestDefaultThreshold(t *testing.T) {
+	for raw, want := range map[string]int64{"": 5_000_000, "0": 0, "2.50": 2_500_000, "1000000": 1_000_000_000_000} {
+		if got, err := defaultThreshold(raw); err != nil || got != want {
+			t.Errorf("%q: %d, %v; want %d", raw, got, err, want)
+		}
+	}
+	for _, raw := range []string{"-1", "abc", "$5", "1000000.000001"} {
+		if _, err := defaultThreshold(raw); err == nil {
+			t.Errorf("%q accepted", raw)
+		}
+	}
+}
+
 // The former report route answers 410 on the composed server. Without its own
 // handler, the dashboard's catch-all would answer 401 and hide the reason.
 func TestReportRouteIsGoneOnTheServer(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -21,7 +22,7 @@ func mockBackend(t *testing.T, h http.HandlerFunc) *Backend {
 	t.Cleanup(server.Close)
 	c := gh.NewClient(server.Client())
 	c.BaseURL, _ = url.Parse(server.URL + "/")
-	return &Backend{clientFor: func(int64) (*gh.Client, error) { return c, nil }}
+	return &Backend{app: c, clientFor: func(int64) (*gh.Client, error) { return c, nil }}
 }
 
 func TestVerifyWebhook(t *testing.T) {
@@ -72,6 +73,32 @@ func TestGetHistoricalWorkflowAttempt(t *testing.T) {
 	run, err := b.GetRunAttempt(context.Background(), core.Deployment{Owner: "o", Repository: "r"}, 123, 2)
 	if err != nil || run.Attempt != 2 || run.Workflow != "existing.yml" || run.Conclusion != "failure" {
 		t.Fatalf("historical attempt not retained: %#v %v", run, err)
+	}
+}
+
+// The installation is asked for as the App. A 404 means the App is not
+// installed on the repository; other failures are not mistaken for that.
+func TestInstallation(t *testing.T) {
+	b := mockBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/o/r/installation":
+			w.Write([]byte(`{"id":42,"account":{"login":"o"}}`))
+		case "/repos/o/missing/installation":
+			w.WriteHeader(404)
+			w.Write([]byte(`{"message":"Not Found"}`))
+		default:
+			w.WriteHeader(500)
+		}
+	})
+	ctx := context.Background()
+	if id, err := b.Installation(ctx, "o", "r"); err != nil || id != 42 {
+		t.Fatalf("installation %d, %v", id, err)
+	}
+	if _, err := b.Installation(ctx, "o", "missing"); !errors.Is(err, core.ErrNotInstalled) || !errors.Is(err, core.ErrUnauthorized) {
+		t.Fatalf("not installed: %v", err)
+	}
+	if _, err := b.Installation(ctx, "o", "broken"); err == nil || errors.Is(err, core.ErrNotInstalled) {
+		t.Fatalf("server failure: %v", err)
 	}
 }
 

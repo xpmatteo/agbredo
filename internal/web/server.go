@@ -190,7 +190,7 @@ func (s *Server) deployment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {
-	threshold, err := parseMoney(r.FormValue("budget"))
+	threshold, err := core.ParseUSD(r.FormValue("budget"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -253,36 +253,6 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 }
 
 func money(micros int64) string { return fmt.Sprintf("%d.%06d", micros/1_000_000, micros%1_000_000) }
-
-// Parse decimal dollars as integer microdollars, without floating-point rounding.
-func parseMoney(raw string) (int64, error) {
-	invalid := errors.New("Threshold must be a non-negative USD amount with at most six decimal places.")
-	raw = strings.TrimSpace(raw)
-	parts := strings.Split(raw, ".")
-	if len(parts) > 2 || parts[0] == "" {
-		return 0, invalid
-	}
-	for _, part := range parts {
-		for _, c := range part {
-			if c < '0' || c > '9' {
-				return 0, invalid
-			}
-		}
-	}
-	frac := ""
-	if len(parts) == 2 {
-		frac = parts[1]
-		if len(frac) > 6 || frac == "" {
-			return 0, invalid
-		}
-	}
-	frac += strings.Repeat("0", 6-len(frac))
-	value, err := strconv.ParseInt(parts[0]+frac, 10, 64)
-	if err != nil {
-		return 0, invalid
-	}
-	return value, nil
-}
 
 func measured(n *int64) string {
 	if n == nil {
