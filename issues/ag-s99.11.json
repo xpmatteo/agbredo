@@ -7,9 +7,15 @@
   "id": "ag-s99.11",
   "labels": [],
   "parent": "ag-s99",
+  "comments": [
+    {
+      "text": "2026-10-14, Matt: remove the report route POST /api/agents/{id}/observations and its supporting code and tables. Scope found: integrations/claude-code, examples/hello-agent, webapi report handler, Service.Report, core.Report + validation + tests, docs. lockRun / reportRunID / verifyReport are shared with telemetry: move them unchanged (keep the 'observe:' ID prefix so run IDs stay stable). No table is report-only: events also holds GitHub status changes (type github.workflow_run). Still open for Matt: delete old report rows (events type claude.execution) with a new migration and drop Event.Claude and the per-event token/cost fields and the run page's report section (recommended), or keep them read-only.",
+      "timestamp": "2026-10-14T14:42:57Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Drop the reporter (integrations/claude-code); telemetry is the only usage path",
   "type": "task",
-  "updated_at": "2026-10-14T14:40:48Z"
+  "updated_at": "2026-10-14T14:42:57Z"
 }
