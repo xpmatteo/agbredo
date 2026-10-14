@@ -41,6 +41,8 @@ in-progress changes.
 
 Committing, closing issues, and syncing are part of completing a task — not separate actions requiring additional permission.
 
+A ticket must hold the full context needed to resolve it. A fresh agent with only the repo and the ticket should be able to do the work. Write down the goal, the decisions made and why, where the code is, what to keep for backwards compatibility, how to check the work, and the open questions for Matt. Do not rely on the chat that created the ticket. When a decision changes, update the ticket.
+
 ## Where things live
 
 - `cmd/agbredo`: the server entry point.
