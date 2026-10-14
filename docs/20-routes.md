@@ -45,7 +45,7 @@ OpenTelemetry from Claude Code. `Authorization: Bearer agb_...`, the token from 
 
 - `Content-Type: application/json` (set `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`). Protobuf is not accepted. `Content-Encoding: gzip` is accepted. Up to 4 MiB, after decompression.
 - The token says which run and which agent run the data belongs to. Nothing in the payload is trusted for that.
-- Metrics: the server reads `claude_code.token.usage` and `claude_code.cost.usage`, delta or cumulative. Logs: it counts `api_error` events, and rate-limit errors among them. Traces: nothing is counted. A repeated export is counted once.
+- Metrics: the server reads `claude_code.token.usage` and `claude_code.cost.usage`, delta or cumulative, with their `model` and `effort` attributes. Logs: it counts `api_error` events, and rate-limit errors among them. Traces: it reads only the `effort` attribute of `claude_code.llm_request` spans. A repeated export is counted once.
 - If `OTLP_FORWARD_URL` is set, the accepted payload is forwarded to the telemetry store with the run's labels added (see `10-design.md`). Otherwise the rest is dropped.
 - `200` with `{}`.
 - Errors: `401` no token, or not an `agb_` token, `415` not JSON, `400` bad gzip or JSON, `413` too large, `403` unknown or expired token, or the run has finished.
@@ -73,7 +73,7 @@ For people. A browser session is needed: GitHub OAuth, then a signed cookie. A u
 | `POST /agents/{id}` | Save a deployment. Refused if the revision is old, or with `400` if another deployment has its repository + workflow file |
 | `POST /agents/{id}/delete` | Hide a deployment. Its runs stay |
 | `GET /runs` | All runs |
-| `GET /runs/{id}` | One run: totals, ref, pipeline and version, Claude Code steps, event timeline |
+| `GET /runs/{id}` | One run: totals, trigger event, ref, pipeline and version, agent runs (Claude Code version, models, effort, usage), event timeline |
 | `GET /static/style.css` | The stylesheet |
 
 ## Sign-in

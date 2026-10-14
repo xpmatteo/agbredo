@@ -69,7 +69,7 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i
 	}
 	if r.ID == "" {
 		r = Run{ID: id, CorrelationID: id, Deployment: a, RunAttempt: i.RunAttempt, Status: "running", ThresholdMicros: a.ThresholdMicros, CreatedAt: now(), UpdatedAt: now()}
-		r.GitHubRunID, r.Ref, r.Pipeline = i.RunID, i.Ref, PipelineOf(i)
+		r.GitHubRunID, r.Ref, r.Pipeline, r.TriggerEvent = i.RunID, i.Ref, PipelineOf(i), i.EventName
 		r.Actor, r.TriggeringActor = gh.Actor, gh.TriggeringActor
 		r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, i.RunID)
 		if _, err = tx.Exec(ctx, "INSERT INTO runs(id,agent_id,correlation_id,status,document) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING", id, a.ID, id, r.Status, mustJSON(r)); err != nil {

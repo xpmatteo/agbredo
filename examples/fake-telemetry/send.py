@@ -16,27 +16,35 @@ import urllib.request
 
 def otlp_payloads(now_ns=None):
     """What a Claude Code step would export: one metrics body, the same body again
-    (a retry, which Agbredo must count once), and one rate-limit error log."""
+    (a retry, which Agbredo must count once), one rate-limit error log, and one
+    trace with an LLM request span that carries the effort level."""
     now_ns = now_ns or time.time_ns()
 
+    def attributes(**attrs):
+        return [{"key": k, "value": {"stringValue": v}} for k, v in attrs.items()]
+
     def point(value, **attrs):
-        keys = [{"key": k, "value": {"stringValue": v}} for k, v in attrs.items()]
-        return {"attributes": keys, "startTimeUnixNano": str(now_ns - 5_000_000_000), "timeUnixNano": str(now_ns), **value}
+        return {"attributes": attributes(**attrs), "startTimeUnixNano": str(now_ns - 5_000_000_000), "timeUnixNano": str(now_ns), **value}
 
     def counter(name, points):
         return {"name": name, "sum": {"aggregationTemporality": 1, "isMonotonic": True, "dataPoints": points}}
 
-    tokens = [point({"asInt": str(n)}, type=kind, **{"app.version": "0.0.0"})
+    model = {"model": "pretend-model", "effort": "medium"}
+    tokens = [point({"asInt": str(n)}, type=kind, **{"app.version": "0.0.0"}, **model)
               for kind, n in (("input", 1200), ("output", 80), ("cacheRead", 5000), ("cacheCreation", 300))]
     metrics = {"resourceMetrics": [{"resource": {}, "scopeMetrics": [{"scope": {"name": "pretend"}, "metrics": [
         counter("claude_code.token.usage", tokens),
-        counter("claude_code.cost.usage", [point({"asDouble": 0.0123})])]}]}]}
+        counter("claude_code.cost.usage", [point({"asDouble": 0.0123}, **model)])]}]}]}
+    traces = {"resourceSpans": [{"resource": {}, "scopeSpans": [{"scope": {"name": "pretend"}, "spans": [{
+        "traceId": "0" * 31 + "1", "spanId": "0" * 15 + "1", "name": "claude_code.llm_request", "kind": 1,
+        "startTimeUnixNano": str(now_ns - 2_000_000_000), "endTimeUnixNano": str(now_ns),
+        "attributes": attributes(**model)}]}]}]}
     logs = {"resourceLogs": [{"resource": {}, "scopeLogs": [{"scope": {"name": "pretend"}, "logRecords": [{
         "timeUnixNano": str(now_ns), "attributes": [
             {"key": "event.name", "value": {"stringValue": "api_error"}},
             {"key": "status_code", "value": {"stringValue": "429"}},
             {"key": "error", "value": {"stringValue": "rate limit (pretend)"}}]}]}]}]}
-    return [("/v1/metrics", metrics), ("/v1/metrics", metrics), ("/v1/logs", logs)]
+    return [("/v1/metrics", metrics), ("/v1/metrics", metrics), ("/v1/logs", logs), ("/v1/traces", traces)]
 
 
 def send(env=os.environ, out=sys.stdout, post=None):

@@ -77,6 +77,7 @@ func New(service Service, auth Auth) *Server {
 		"agentRunTokens": func(u *core.AgentRunUsage, kind string) string {
 			return usageTokens(u.Usage, kind)
 		},
+		"usageTokens": usageTokens,
 		"date": func(t time.Time) string {
 			if t.IsZero() {
 				return "—"

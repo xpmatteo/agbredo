@@ -170,3 +170,103 @@ func TestIngestTracesChecksTokenAndReturnsOrigin(t *testing.T) {
 		t.Fatal("unknown token accepted", err)
 	}
 }
+
+// A run records its configuration: the trigger event from the OIDC identity,
+// and per agent run the models (with tokens per model) and effort levels.
+func TestIngestKeepsModelsAndEffortPerAgentRun(t *testing.T) {
+	s, _, a, i := tokenDeployment(t)
+	ctx := context.Background()
+	review, _, err := s.MintToken(ctx, a.ID, "review", i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fix, _, _ := s.MintToken(ctx, a.ID, "fix", i)
+	idle, _, _ := s.MintToken(ctx, a.ID, "idle", i)
+	ingest := func(token string, bodies ...[]byte) {
+		t.Helper()
+		for _, b := range bodies {
+			if _, err := s.IngestMetrics(ctx, token, b); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	tokens := func(temporality int, kind, model, effort, end, value string) []byte {
+		attrs := str("type", kind) + `,` + str("model", model)
+		if effort != "" {
+			attrs += `,` + str("effort", effort)
+		}
+		return metricsPayload("claude_code.token.usage", temporality, "true", attrs, "1", end, `"asInt":"`+value+`"`)
+	}
+	// Delta input of model a: a retried export counts once.
+	ingest(review, tokens(1, "input", "claude-a", "high", "2", "100"), tokens(1, "input", "claude-a", "high", "2", "100"), tokens(1, "input", "claude-a", "high", "3", "5"))
+	// Cumulative output of model b: only the growth counts; older or lower exports are ignored.
+	ingest(review, tokens(2, "output", "claude-b", "", "10", "10"), tokens(2, "output", "claude-b", "", "20", "25"), tokens(2, "output", "claude-b", "", "15", "40"), tokens(2, "output", "claude-b", "", "30", "22"))
+	// Model c is seen only on the cost counter: it has no tokens.
+	ingest(review, metricsPayload("claude_code.cost.usage", 1, "true", str("model", "claude-c"), "1", "2", `"asDouble":0.01`))
+	// Effort from traces; a repeated export changes nothing.
+	trace := tracesPayload(span("claude_code.llm_request", str("effort", "low")) + `,` + span("claude_code.llm_request", str("effort", "high")))
+	for range 2 {
+		if _, err = s.IngestTraces(ctx, review, trace); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A trace without effort adds no agent run; a bad trace is refused.
+	if _, err = s.IngestTraces(ctx, idle, tracesPayload(span("claude_code.tool", ""))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.IngestTraces(ctx, idle, []byte(`{`)); !errors.Is(err, ErrInvalid) {
+		t.Fatal("invalid trace accepted", err)
+	}
+	// Models beyond the limit still count in the totals.
+	for n := range maxModels + 4 {
+		ingest(fix, tokens(1, "input", "claude-"+string(rune('a'+n)), "", "2", "1"))
+	}
+
+	r, err := s.Run(ctx, attemptRunID(a.ID, i.RunID, i.RunAttempt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.TriggerEvent != "schedule" {
+		t.Errorf("trigger event = %q", r.TriggerEvent)
+	}
+	rv := r.AgentRuns["review"]
+	if len(rv.Models) != 3 {
+		t.Fatalf("models: %v", rv.Models)
+	}
+	ma, mb, mc := rv.Models["claude-a"], rv.Models["claude-b"], rv.Models["claude-c"]
+	if *ma.InputTokens != 105 || ma.OutputTokens != nil || *mb.OutputTokens != 25 || mb.InputTokens != nil || *mc != (ClaudeUsage{}) {
+		t.Fatalf("tokens per model: %+v %+v %+v", ma, mb, mc)
+	}
+	if *rv.Usage.InputTokens != 105 || *rv.Usage.OutputTokens != 25 {
+		t.Fatalf("agent run totals: %+v", rv.Usage)
+	}
+	if len(rv.Efforts) != 2 || rv.Efforts[0] != "low" || rv.Efforts[1] != "high" {
+		t.Fatalf("efforts = %v", rv.Efforts)
+	}
+	fx := r.AgentRuns["fix"]
+	if len(fx.Models) != maxModels || *fx.Usage.InputTokens != int64(maxModels+4) || r.InputTokens != 105+int64(maxModels+4) {
+		t.Fatalf("model limit: %d models, %d tokens, run %d", len(fx.Models), *fx.Usage.InputTokens, r.InputTokens)
+	}
+	if fx.Efforts != nil {
+		t.Fatalf("effort without any report must stay missing: %v", fx.Efforts)
+	}
+	if _, ok := r.AgentRuns["idle"]; ok {
+		t.Fatal("a trace without effort added an agent run")
+	}
+}
+
+func TestAddEffortKeepsASmallOrderedSet(t *testing.T) {
+	u := &AgentRunUsage{}
+	for _, e := range []string{"max", "low", "future", "high", "low", "", "medium", "xhigh", "a", "b", "c", "d"} {
+		u.addEffort(e)
+	}
+	want := []string{"low", "medium", "high", "xhigh", "max", "a", "b", "future"}
+	if len(u.Efforts) != len(want) {
+		t.Fatalf("%v", u.Efforts)
+	}
+	for n := range want {
+		if u.Efforts[n] != want[n] {
+			t.Fatalf("%v, want %v", u.Efforts, want)
+		}
+	}
+}

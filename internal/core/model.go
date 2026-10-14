@@ -77,6 +77,9 @@ type Run struct {
 	// The git ref the run ran from, e.g. refs/heads/main, from the job's OIDC
 	// identity when the run is first created. Older runs have none.
 	Ref string `json:"ref,omitempty"`
+	// The event that triggered the run, e.g. schedule or push, from the job's
+	// OIDC identity (event_name) when the run is first created. Older runs have none.
+	TriggerEvent string `json:"trigger_event,omitempty"`
 	// The pipeline the run used and its version, from the job's OIDC identity
 	// when the run is first created. Missing for a caller workflow that calls no
 	// reusable workflow, and for older runs.

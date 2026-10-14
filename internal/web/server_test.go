@@ -287,3 +287,37 @@ func TestDeploymentPageShowsPipelineVersions(t *testing.T) {
 		t.Fatalf("no runs: %s", body)
 	}
 }
+
+// The run page shows the trigger event, and the models and effort levels of
+// each agent run. Older runs without them show them as missing.
+func TestRunPageShowsConfiguration(t *testing.T) {
+	in, out := int64(1200), int64(80)
+	s := &testService{run: core.Run{ID: "run-1", TriggerEvent: "schedule", AgentRuns: map[string]*core.AgentRunUsage{
+		"review": {Models: map[string]*core.ClaudeUsage{"claude-sonnet-4-5": {InputTokens: &in, OutputTokens: &out}, "claude-haiku-4-5": {}}, Efforts: []string{"low", "high"}},
+		"old":    {},
+	}}}
+	body := serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+	if !strings.Contains(body, `<dt>Trigger event</dt><dd class="mono">schedule</dd>`) || !strings.Contains(body, "<th>Models</th><th>Effort</th>") {
+		t.Fatalf("configuration missing: %s", body)
+	}
+	review := body[strings.Index(body, ">review<"):]
+	review = review[:strings.Index(review, "</tr>")]
+	for _, want := range []string{
+		`<span class="mono">claude-haiku-4-5</span><small>Input / output: Unavailable / Unavailable`,
+		`<span class="mono">claude-sonnet-4-5</span><small>Input / output: 1200 / 80<br>Cache read / creation: Unavailable / Unavailable</small>`,
+		`<td>low, high</td>`,
+	} {
+		if !strings.Contains(review, want) {
+			t.Fatalf("want %s in %s", want, review)
+		}
+	}
+	old := body[strings.Index(body, ">old<"):]
+	old = old[:strings.Index(old, "</tr>")]
+	if !strings.Contains(old, "<td>Unavailable</td><td>Unavailable</td><td>Unavailable</td>") {
+		t.Fatalf("older agent run: %s", old)
+	}
+	s.run.TriggerEvent = ""
+	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(); !strings.Contains(body, `<dt>Trigger event</dt><dd class="mono">Unavailable</dd>`) {
+		t.Fatalf("older run: %s", body)
+	}
+}
