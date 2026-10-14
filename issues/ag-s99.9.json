@@ -11,11 +11,15 @@
     {
       "text": "Draft PR https://github.com/xpmatteo/agbredo/pull/3: Report and Event keep their names as kinds of observation; docs + run page wording. Close when merged.",
       "timestamp": "2026-10-14T14:32:07Z"
+    },
+    {
+      "text": "2026-10-14: Matt decided to drop the reporter (see new child ticket). Observation then means telemetry, webhooks and polls. Draft PR #3 was closed unmerged: Matt wants conversation before PRs.",
+      "timestamp": "2026-10-14T14:40:48Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Use Observation as the umbrella word for reports, telemetry and webhooks",
   "type": "task",
-  "updated_at": "2026-10-14T14:32:07Z"
+  "updated_at": "2026-10-14T14:40:48Z"
 }
