@@ -3,7 +3,7 @@
   "blocked_by": [],
   "blocks": [],
   "created": "2026-10-14T12:22:59Z",
-  "description": "BudgetMicros and OverBudget get threshold names in Go. Keep JSON keys for stored data.",
+  "description": "Rename budget to threshold in Go code, to match docs/00-glossary.md. No design talk needed.\n\nGlossary: Threshold = estimated cost per run above which a run is flagged. It does not stop anything. The dashboard already says \"threshold\"; the code says BudgetMicros and OverBudget (internal/core/model.go, validation.go, report.go, telemetry.go, internal/web/server.go, templates.html).\n\nRename to ThresholdMicros / OverThreshold (or similar). Keep JSON keys budget_micros and over_budget, and the form field name if changing it would break anything, for stored data and backwards compatibility.\n\nCheck: go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./...",
   "id": "ag-s99.8",
   "labels": [],
   "parent": "ag-s99",
@@ -11,5 +11,5 @@
   "status": "open",
   "title": "Rename budget to threshold in code",
   "type": "task",
-  "updated_at": "2026-10-14T12:22:59Z"
+  "updated_at": "2026-10-14T12:34:19Z"
 }
