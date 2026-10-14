@@ -13,6 +13,10 @@
     {
       "text": "2026-10-14: recommended answers posted to Matt in the project thread; awaiting his decision before code.",
       "timestamp": "2026-10-14T14:32:07Z"
+    },
+    {
+      "text": "2026-10-14, Matt decided: the reporter is dropped (ag-s99.11), so there is nothing to publish but the telemetry action, already used remotely as xpmatteo/agbredo/integrations/claude-code-otlp. Central repo = xpmatteo/agbredo-pipelines (empty today). First pipeline = rpg-interpreter's .github/workflows/agent-instructions-audit.yml. The checks file (.github/agent-instructions-checks.md) and all scripts (scripts/agent-instructions-refs.sh, the inline gate/awk/jq steps) move to the central repo for cohesion; inside a reusable workflow they are not checked out, so ship them in a composite action in the central repo (github.action_path), per the original plan. The Sarca note stays only in rpg-interpreter's caller workflow (pass it as an input, e.g. extra prompt text). rpg-interpreter keeps a caller workflow: schedule + workflow_dispatch, permissions incl. id-token: write, one uses: xpmatteo/agbredo-pipelines/.github/workflows/agent-instructions-audit.yml@v1, secrets. Matt approved: push agbredo-pipelines' first main, tag agbredo v1 (pipelines use claude-code-otlp@v1, not @main), tag agbredo-pipelines v1.",
+      "timestamp": "2026-10-14T15:01:11Z"
     }
   ],
   "priority": 2,
