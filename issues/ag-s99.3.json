@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "ag-s99.4"
+  ],
   "created": "2026-10-14T12:22:57Z",
   "description": "DESIGN TALK (schema). Drop ref from the deployment's identity; record ref per run instead. One caller workflow calls one pipeline.",
   "id": "ag-s99.3",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Identify a deployment by repository + workflow file",
   "type": "task",
-  "updated_at": "2026-10-14T12:22:57Z"
+  "updated_at": "2026-10-14T12:23:07Z"
 }
