@@ -15,7 +15,7 @@ var file = regexp.MustCompile(`^[A-Za-z0-9_.-]+\.ya?ml$`)
 var secretPattern = regexp.MustCompile(`(?i)(bearer\s+\S+|(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|(?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*[^\s,;]+)`)
 
 func Redact(s string) string { return secretPattern.ReplaceAllString(s, "[REDACTED]") }
-func ValidateAgent(a Agent) error {
+func ValidateDeployment(a Deployment) error {
 	if strings.TrimSpace(a.Name) == "" || len(a.Name) > 120 {
 		return fmt.Errorf("name must contain 1–120 characters")
 	}

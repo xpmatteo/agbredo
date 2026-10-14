@@ -30,7 +30,7 @@ func ID() string {
 	return hex.EncodeToString(b[:])
 }
 
-type Agent struct {
+type Deployment struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	Description    string `json:"description"`
@@ -41,7 +41,7 @@ type Agent struct {
 	InstallationID int64  `json:"installation_id"`
 	BudgetMicros   int64  `json:"budget_micros"`
 	Enabled        bool   `json:"enabled"`
-	Version        int64  `json:"version"`
+	Revision       int64  `json:"version"`
 }
 
 type Run struct {
@@ -52,7 +52,7 @@ type Run struct {
 	APIErrors              int64        `json:"api_errors,omitempty"`
 	ID                     string       `json:"id"`
 	CorrelationID          string       `json:"correlation_id"`
-	Agent                  Agent        `json:"agent"`
+	Deployment             Deployment   `json:"agent"`
 	Status                 string       `json:"status"`
 	BudgetMicros           int64        `json:"budget_micros"`
 	CostMicros             int64        `json:"cost_micros"`
@@ -72,24 +72,24 @@ type Run struct {
 
 // Costs are deltas, expressed as integer microdollars. A stable event ID makes retries safe.
 type Event struct {
-	Claude        *Report         `json:"claude,omitempty"`
-	ID            string          `json:"id"`
-	RunID         string          `json:"run_id"`
-	CorrelationID string          `json:"correlation_id"`
-	AgentID       string          `json:"agent_id"`
-	AgentVersion  int64           `json:"agent_version"`
-	Timestamp     time.Time       `json:"timestamp"`
-	Type          string          `json:"type"`
-	Action        string          `json:"action"`
-	Resource      string          `json:"resource"`
-	Status        string          `json:"status"`
-	DurationMS    int64           `json:"duration_ms"`
-	InputTokens   int64           `json:"input_tokens"`
-	OutputTokens  int64           `json:"output_tokens"`
-	CostMicros    int64           `json:"cost_micros"`
-	Message       string          `json:"message"`
-	Error         string          `json:"error"`
-	Metadata      json.RawMessage `json:"metadata,omitempty"`
+	Claude             *Report         `json:"claude,omitempty"`
+	ID                 string          `json:"id"`
+	RunID              string          `json:"run_id"`
+	CorrelationID      string          `json:"correlation_id"`
+	DeploymentID       string          `json:"agent_id"`
+	DeploymentRevision int64           `json:"agent_version"`
+	Timestamp          time.Time       `json:"timestamp"`
+	Type               string          `json:"type"`
+	Action             string          `json:"action"`
+	Resource           string          `json:"resource"`
+	Status             string          `json:"status"`
+	DurationMS         int64           `json:"duration_ms"`
+	InputTokens        int64           `json:"input_tokens"`
+	OutputTokens       int64           `json:"output_tokens"`
+	CostMicros         int64           `json:"cost_micros"`
+	Message            string          `json:"message"`
+	Error              string          `json:"error"`
+	Metadata           json.RawMessage `json:"metadata,omitempty"`
 }
 
 type Identity struct {
@@ -116,11 +116,11 @@ type WorkflowRun struct {
 }
 
 type Backend interface {
-	GetRun(context.Context, Agent, int64) (WorkflowRun, error)
-	GetRunAttempt(context.Context, Agent, int64, int64) (WorkflowRun, error)
+	GetRun(context.Context, Deployment, int64) (WorkflowRun, error)
+	GetRunAttempt(context.Context, Deployment, int64, int64) (WorkflowRun, error)
 }
 
 type Fleet struct {
-	Agents []Agent
-	Runs   []Run
+	Deployments []Deployment
+	Runs        []Run
 }

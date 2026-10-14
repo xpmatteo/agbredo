@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-func tokenAgent(t *testing.T) (*Service, *fakeBackend, Agent, Identity) {
+func tokenDeployment(t *testing.T) (*Service, *fakeBackend, Deployment, Identity) {
 	s, f := testService(t)
-	a, i := reportAgent(t, s, f)
+	a, i := reportDeployment(t, s, f)
 	return s, f, a, i
 }
 
 func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
-	s, _, a, i := tokenAgent(t)
+	s, _, a, i := tokenDeployment(t)
 	ctx := context.Background()
 	token, expires, err := s.MintToken(ctx, a.ID, "review", i)
 	if err != nil || len(token) < 40 || time.Until(expires) < 5*time.Hour || time.Until(expires) > TokenLifetime {
@@ -48,7 +48,7 @@ func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
 }
 
 func TestIngestCountsEachExportOnceAndPerSource(t *testing.T) {
-	s, f, a, i := tokenAgent(t)
+	s, f, a, i := tokenDeployment(t)
 	ctx := context.Background()
 	review, _, err := s.MintToken(ctx, a.ID, "review", i)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestIngestCountsEachExportOnceAndPerSource(t *testing.T) {
 }
 
 func TestExpiredTokenIsRefused(t *testing.T) {
-	s, _, a, i := tokenAgent(t)
+	s, _, a, i := tokenDeployment(t)
 	ctx := context.Background()
 	token, _, err := s.MintToken(ctx, a.ID, "review", i)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestExpiredTokenIsRefused(t *testing.T) {
 }
 
 func TestIngestTracesChecksTokenAndReturnsOrigin(t *testing.T) {
-	s, f, a, i := tokenAgent(t)
+	s, f, a, i := tokenDeployment(t)
 	ctx := context.Background()
 	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "in_progress", Actor: "starter", TriggeringActor: "rerunner"})
 	token, _, err := s.MintToken(ctx, a.ID, "review", i)
@@ -148,7 +148,7 @@ func TestIngestTracesChecksTokenAndReturnsOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin, err := s.IngestTraces(ctx, token, []byte(`{"resourceSpans":[]}`))
-	if err != nil || origin.Source != "review" || origin.Run.Agent.ID != a.ID {
+	if err != nil || origin.Source != "review" || origin.Run.Deployment.ID != a.ID {
 		t.Fatalf("%#v %v", origin, err)
 	}
 	if origin.Run.Actor != "starter" || origin.Run.TriggeringActor != "rerunner" {

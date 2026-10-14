@@ -46,11 +46,11 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 			return nil
 		}
 	}
-	if gh.ID != r.GitHubRunID || gh.Attempt != r.RunAttempt || gh.Workflow != r.Agent.Workflow || !refMatches(r.Agent.Ref, gh.Ref) {
+	if gh.ID != r.GitHubRunID || gh.Attempt != r.RunAttempt || gh.Workflow != r.Deployment.Workflow || !refMatches(r.Deployment.Ref, gh.Ref) {
 		return ErrUnauthorized
 	}
 	r.Status = reportedStatus(r.Status, gh)
-	_, err = insertEvent(ctx, tx, Event{ID: fmt.Sprintf("system:github:%d:%d:%s:%s", gh.ID, gh.Attempt, gh.Status, gh.Conclusion), RunID: r.ID, CorrelationID: r.CorrelationID, AgentID: r.Agent.ID, AgentVersion: r.Agent.Version, Timestamp: now(), Type: "github.workflow_run", Status: r.Status, Message: "GitHub workflow " + gh.Status + " " + gh.Conclusion})
+	_, err = insertEvent(ctx, tx, Event{ID: fmt.Sprintf("system:github:%d:%d:%s:%s", gh.ID, gh.Attempt, gh.Status, gh.Conclusion), RunID: r.ID, CorrelationID: r.CorrelationID, DeploymentID: r.Deployment.ID, DeploymentRevision: r.Deployment.Revision, Timestamp: now(), Type: "github.workflow_run", Status: r.Status, Message: "GitHub workflow " + gh.Status + " " + gh.Conclusion})
 	if err != nil {
 		return err
 	}
@@ -72,10 +72,10 @@ func (s *Service) Webhook(ctx context.Context, delivery, repository string, ghID
 		return err
 	}
 	for _, r := range reported {
-		if repository != r.Agent.Owner+"/"+r.Agent.Repository {
+		if repository != r.Deployment.Owner+"/"+r.Deployment.Repository {
 			continue
 		}
-		gh, e := s.Backend.GetRun(ctx, r.Agent, ghID)
+		gh, e := s.Backend.GetRun(ctx, r.Deployment, ghID)
 		if e != nil {
 			return e
 		}
@@ -99,7 +99,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		return err
 	}
 	for _, r := range runs {
-		gh, e := s.Backend.GetRunAttempt(ctx, r.Agent, r.GitHubRunID, r.RunAttempt)
+		gh, e := s.Backend.GetRunAttempt(ctx, r.Deployment, r.GitHubRunID, r.RunAttempt)
 		if e != nil {
 			continue
 		}

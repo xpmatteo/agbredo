@@ -66,7 +66,7 @@ func convert(r *gh.WorkflowRun, workflow string) core.WorkflowRun {
 	return core.WorkflowRun{Attempt: int64(r.GetRunAttempt()), ID: r.GetID(), URL: r.GetHTMLURL(), Title: r.GetDisplayTitle(), Status: r.GetStatus(), Conclusion: r.GetConclusion(), Workflow: workflow, Ref: r.GetHeadBranch(), Actor: r.GetActor().GetLogin(), TriggeringActor: r.GetTriggeringActor().GetLogin()}
 }
 
-func (b *Backend) GetRun(ctx context.Context, a core.Agent, id int64) (core.WorkflowRun, error) {
+func (b *Backend) GetRun(ctx context.Context, a core.Deployment, id int64) (core.WorkflowRun, error) {
 	c, err := b.client(a.InstallationID)
 	if err != nil {
 		return core.WorkflowRun{}, err
@@ -86,7 +86,7 @@ func (b *Backend) GetRun(ctx context.Context, a core.Agent, id int64) (core.Work
 	return convert(r, workflow), nil
 }
 
-func (b *Backend) GetRunAttempt(ctx context.Context, a core.Agent, id int64, attempt int64) (core.WorkflowRun, error) {
+func (b *Backend) GetRunAttempt(ctx context.Context, a core.Deployment, id int64, attempt int64) (core.WorkflowRun, error) {
 	c, err := b.client(a.InstallationID)
 	if err != nil {
 		return core.WorkflowRun{}, err

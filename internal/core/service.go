@@ -14,14 +14,14 @@ type Service struct {
 	Backend Backend
 }
 
-func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
-	return readJSON[Agent](ctx, s.DB, "SELECT document FROM agents WHERE id=$1 AND NOT deleted", id)
+func (s *Service) Deployment(ctx context.Context, id string) (Deployment, error) {
+	return readJSON[Deployment](ctx, s.DB, "SELECT document FROM agents WHERE id=$1 AND NOT deleted", id)
 }
 func (s *Service) Run(ctx context.Context, id string) (Run, error) {
 	return readJSON[Run](ctx, s.DB, "SELECT document FROM runs WHERE id=$1", id)
 }
-func (s *Service) SaveAgent(ctx context.Context, a Agent) (Agent, error) {
-	if err := ValidateAgent(a); err != nil {
+func (s *Service) SaveDeployment(ctx context.Context, a Deployment) (Deployment, error) {
+	if err := ValidateDeployment(a); err != nil {
 		return a, err
 	}
 	tx, err := s.DB.Begin(ctx)
@@ -31,17 +31,17 @@ func (s *Service) SaveAgent(ctx context.Context, a Agent) (Agent, error) {
 	defer tx.Rollback(ctx)
 	if a.ID == "" {
 		a.ID = ID()
-		a.Version = 1
+		a.Revision = 1
 		_, err = tx.Exec(ctx, "INSERT INTO agents(id,document) VALUES($1,$2)", a.ID, mustJSON(a))
 	} else {
-		previous, e := readJSON[Agent](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR UPDATE", a.ID)
+		previous, e := readJSON[Deployment](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR UPDATE", a.ID)
 		if e != nil {
 			return a, e
 		}
-		if a.Version != previous.Version {
-			return a, fmt.Errorf("agent was updated by another user; reload its configuration: %w", ErrConflict)
+		if a.Revision != previous.Revision {
+			return a, fmt.Errorf("deployment was updated by another user; reload its configuration: %w", ErrConflict)
 		}
-		a.Version = previous.Version + 1
+		a.Revision = previous.Revision + 1
 		_, err = tx.Exec(ctx, "UPDATE agents SET document=$2 WHERE id=$1", a.ID, mustJSON(a))
 	}
 	if err != nil {
@@ -49,7 +49,7 @@ func (s *Service) SaveAgent(ctx context.Context, a Agent) (Agent, error) {
 	}
 	return a, tx.Commit(ctx)
 }
-func (s *Service) DeleteAgent(ctx context.Context, id string) error {
+func (s *Service) DeleteDeployment(ctx context.Context, id string) error {
 	tag, err := s.DB.Exec(ctx, "UPDATE agents SET deleted=true WHERE id=$1 AND NOT deleted", id)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
@@ -62,7 +62,7 @@ func (s *Service) Fleet(ctx context.Context) (Fleet, error) {
 	if err != nil {
 		return f, err
 	}
-	f.Agents, err = collect[Agent](rows)
+	f.Deployments, err = collect[Deployment](rows)
 	if err != nil {
 		return f, err
 	}

@@ -104,12 +104,12 @@ func (a *API) otlp(signal string, ingest func(*core.Service, context.Context, st
 func labels(o core.TelemetryOrigin) map[string]string {
 	r := o.Run
 	all := map[string]string{
-		"agbredo.agent.id":        r.Agent.ID,
-		"agbredo.agent.name":      r.Agent.Name,
+		"agbredo.agent.id":        r.Deployment.ID,
+		"agbredo.agent.name":      r.Deployment.Name,
 		"agbredo.run.id":          r.ID,
 		"agbredo.source":          o.Source,
-		"github.repository":       r.Agent.Owner + "/" + r.Agent.Repository,
-		"github.workflow":         r.Agent.Workflow,
+		"github.repository":       r.Deployment.Owner + "/" + r.Deployment.Repository,
+		"github.workflow":         r.Deployment.Workflow,
 		"github.run_id":           strconv.FormatInt(r.GitHubRunID, 10),
 		"github.run_attempt":      strconv.FormatInt(r.RunAttempt, 10),
 		"github.run_url":          r.GitHubURL,

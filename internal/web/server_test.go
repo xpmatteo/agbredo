@@ -23,22 +23,24 @@ func (a testAuth) CheckCSRF(r *http.Request) bool {
 }
 
 type testService struct {
-	agent  core.Agent
-	run    core.Run
-	events []core.Event
-	saved  core.Agent
+	deployment core.Deployment
+	run        core.Run
+	events     []core.Event
+	saved      core.Deployment
 }
 
 func (s *testService) Fleet(context.Context) (core.Fleet, error) {
-	return core.Fleet{Agents: []core.Agent{s.agent}, Runs: []core.Run{s.run}}, nil
+	return core.Fleet{Deployments: []core.Deployment{s.deployment}, Runs: []core.Run{s.run}}, nil
 }
-func (s *testService) Agent(context.Context, string) (core.Agent, error) { return s.agent, nil }
-func (s *testService) SaveAgent(_ context.Context, a core.Agent) (core.Agent, error) {
+func (s *testService) Deployment(context.Context, string) (core.Deployment, error) {
+	return s.deployment, nil
+}
+func (s *testService) SaveDeployment(_ context.Context, a core.Deployment) (core.Deployment, error) {
 	s.saved = a
 	a.ID = "agent-1"
 	return a, nil
 }
-func (s *testService) DeleteAgent(context.Context, string) error            { return nil }
+func (s *testService) DeleteDeployment(context.Context, string) error       { return nil }
 func (s *testService) Run(context.Context, string) (core.Run, error)        { return s.run, nil }
 func (s *testService) Events(context.Context, string) ([]core.Event, error) { return s.events, nil }
 
@@ -103,7 +105,7 @@ func TestBudgetDecimalConversion(t *testing.T) {
 	}
 }
 
-func TestAgentFormExactCost(t *testing.T) {
+func TestDeploymentFormExactCost(t *testing.T) {
 	s := &testService{}
 	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents", url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"example"}, "repository": {"example"}, "workflow": {"agent.yml"}, "ref": {"main"}, "installation_id": {"123"}, "budget": {"0.000003"}, "enabled": {"on"}})
 	if w.Code != http.StatusSeeOther || s.saved.BudgetMicros != 3 {
@@ -112,10 +114,10 @@ func TestAgentFormExactCost(t *testing.T) {
 }
 
 func TestDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
-	s := &testService{agent: core.Agent{ID: "agent-1", Enabled: true}, run: core.Run{ID: "run-1", Status: "running"}}
+	s := &testService{deployment: core.Deployment{ID: "agent-1", Enabled: true}, run: core.Run{ID: "run-1", Status: "running"}}
 	w := serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil)
 	if strings.Contains(w.Body.String(), "Launch workflow") || !strings.Contains(w.Body.String(), "Reporting enabled") {
-		t.Fatal("agent page offered dispatch", w.Body.String())
+		t.Fatal("deployment page offered dispatch", w.Body.String())
 	}
 	w = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil)
 	for _, text := range []string{"Unavailable", "Actual subscription charges unknown", "Runs in GitHub Actions; Agbredo only receives reports"} {
@@ -134,7 +136,7 @@ func TestDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
 }
 
 func TestPagesEscapeUntrustedContent(t *testing.T) {
-	s := &testService{agent: core.Agent{ID: "agent", Name: "Example", Version: 1}, run: core.Run{ID: "run", Agent: core.Agent{Name: "Example"}}, events: []core.Event{{Message: "<script>secret()</script>"}}}
+	s := &testService{deployment: core.Deployment{ID: "agent", Name: "Example", Revision: 1}, run: core.Run{ID: "run", Deployment: core.Deployment{Name: "Example"}}, events: []core.Event{{Message: "<script>secret()</script>"}}}
 	for _, path := range []string{"/", "/agents", "/agents/agent", "/runs", "/runs/run"} {
 		w := serve(s, testAuth{"admin", true}, http.MethodGet, path, nil)
 		if w.Code != http.StatusOK {
@@ -180,5 +182,27 @@ func TestRunPageShowsEachClaudeStepAndKeepsMissingValuesMissing(t *testing.T) {
 	s.run.Sources = nil
 	if strings.Contains(serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(), "Claude Code steps") {
 		t.Fatal("empty table shown")
+	}
+}
+
+func TestSaveDeploymentRevisionField(t *testing.T) {
+	form := func(version string) url.Values {
+		v := url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"example"}, "repository": {"example"}, "workflow": {"agent.yml"}, "ref": {"main"}, "installation_id": {"123"}, "budget": {"1"}, "enabled": {"on"}}
+		if version != "" {
+			v.Set("version", version)
+		}
+		return v
+	}
+	s := &testService{}
+	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents/agent-1", form("3"))
+	if w.Code != http.StatusSeeOther || s.saved.Revision != 3 {
+		t.Fatalf("status = %d, revision = %d", w.Code, s.saved.Revision)
+	}
+	for _, bad := range []string{"", "abc", "0", "-1"} {
+		s := &testService{}
+		w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents/agent-1", form(bad))
+		if w.Code != http.StatusBadRequest || s.saved.Revision != 0 {
+			t.Fatalf("version %q: status = %d", bad, w.Code)
+		}
 	}
 }

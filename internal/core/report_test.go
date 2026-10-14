@@ -9,10 +9,10 @@ import (
 
 func ptr[T any](n T) *T { return &n }
 
-func reportAgent(t *testing.T, s *Service, f *fakeBackend) (Agent, Identity) {
+func reportDeployment(t *testing.T, s *Service, f *fakeBackend) (Deployment, Identity) {
 	t.Helper()
-	a := validAgent()
-	a, err := s.SaveAgent(context.Background(), a)
+	a := validDeployment()
+	a, err := s.SaveDeployment(context.Background(), a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func finishedReport() Report {
 func TestReportPreservesIndependentExecutionAndDeduplicatesConsumption(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := reportAgent(t, s, f)
+	a, i := reportDeployment(t, s, f)
 	o := finishedReport()
 	r, inserted, err := s.Report(ctx, a.ID, o, i)
 	if err != nil || !inserted {
@@ -71,7 +71,7 @@ func TestReportPreservesIndependentExecutionAndDeduplicatesConsumption(t *testin
 func TestReportMissingUsageAndSignedBinding(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := reportAgent(t, s, f)
+	a, i := reportDeployment(t, s, f)
 	o := Report{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "job", Phase: "finished", Version: "unknown", ExitCode: ptr(0)}
 	for _, change := range []func(*Identity){
 		func(i *Identity) { i.Repository = "evil/repo" }, func(i *Identity) { i.Workflow = "other.yml" },
@@ -136,7 +136,7 @@ func TestReportValidation(t *testing.T) {
 func TestReportConcurrentFirstReportsKeepOneSnapshot(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := reportAgent(t, s, f)
+	a, i := reportDeployment(t, s, f)
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
@@ -154,21 +154,21 @@ func TestReportConcurrentFirstReportsKeepOneSnapshot(t *testing.T) {
 	}
 	// The existing attempt retains its config when the registry is edited.
 	a.Description = "Updated registration"
-	a, err = s.SaveAgent(ctx, a)
+	a, err = s.SaveDeployment(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
 	o := finishedReport()
 	o.Source = "next-step"
 	r, _, err := s.Report(ctx, a.ID, o, i)
-	if err != nil || r.Agent.Version != 1 || r.CostMicros != 2_000_002 {
+	if err != nil || r.Deployment.Revision != 1 || r.CostMicros != 2_000_002 {
 		t.Fatalf("historical snapshot changed: %#v %v", r, err)
 	}
 }
 
 func TestReportSavedReportCannotMoveToAnotherAttempt(t *testing.T) {
 	s, f := testService(t)
-	a, i := reportAgent(t, s, f)
+	a, i := reportDeployment(t, s, f)
 	o := finishedReport()
 	i.RunAttempt = 2
 	f.put(WorkflowRun{ID: 777, Attempt: 2, Workflow: a.Workflow, Ref: "main", Status: "in_progress"})
@@ -183,7 +183,7 @@ func TestReportSavedReportCannotMoveToAnotherAttempt(t *testing.T) {
 
 func TestReportExistingActionOutcomeDoesNotFabricateExitCode(t *testing.T) {
 	s, f := testService(t)
-	a, i := reportAgent(t, s, f)
+	a, i := reportDeployment(t, s, f)
 	o := finishedReport()
 	o.ExitCode, o.ActionOutcome = nil, "failure"
 	r, _, err := s.Report(context.Background(), a.ID, o, i)

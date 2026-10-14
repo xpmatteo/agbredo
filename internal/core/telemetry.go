@@ -39,7 +39,7 @@ func hashToken(token string) string {
 // runner proves who it is with its GitHub identity, exactly as for a report.
 // The token only identifies this run attempt and source; it is not an identity
 // for anything else. This also registers the run.
-func (s *Service) MintToken(ctx context.Context, agentID, source string, i Identity) (string, time.Time, error) {
+func (s *Service) MintToken(ctx context.Context, deploymentID, source string, i Identity) (string, time.Time, error) {
 	if !slug.MatchString(source) || len(source) > 80 {
 		return "", time.Time{}, invalid("provide a stable source name")
 	}
@@ -51,7 +51,7 @@ func (s *Service) MintToken(ctx context.Context, agentID, source string, i Ident
 		return "", time.Time{}, err
 	}
 	defer tx.Rollback(ctx)
-	r, gh, err := s.lockRun(ctx, tx, agentID, i)
+	r, gh, err := s.lockRun(ctx, tx, deploymentID, i)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -77,12 +77,12 @@ func (s *Service) MintToken(ctx context.Context, agentID, source string, i Ident
 // TraceParent is a W3C traceparent for one Claude Code step. The trace ID is
 // the first half of the run ID, so every step of a run attempt shares one
 // trace. The parent span ID is new each time.
-func TraceParent(agentID string, i Identity) string {
+func TraceParent(deploymentID string, i Identity) string {
 	var span [8]byte
 	if _, err := rand.Read(span[:]); err != nil {
 		panic(err)
 	}
-	return "00-" + reportRunID(agentID, i.RunID, i.RunAttempt)[:32] + "-" + hex.EncodeToString(span[:]) + "-01"
+	return "00-" + reportRunID(deploymentID, i.RunID, i.RunAttempt)[:32] + "-" + hex.EncodeToString(span[:]) + "-01"
 }
 
 // TelemetryOrigin is the run and Claude Code step a telemetry token belongs to.

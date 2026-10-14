@@ -36,8 +36,8 @@ A run is registered only when a report arrives or a token is requested. Nothing 
 
 | Table | Holds |
 | --- | --- |
-| `agents` | Registered workflow: repository, workflow file, ref, App installation, estimate threshold. Versioned. Deleting hides it. |
-| `runs` | One per workflow run attempt. Keeps a copy of the agent as it was. A trigger blocks changes to that copy. Totals: estimated cost, tokens, API and rate-limit failures. The GitHub logins of `actor` (who started the run) and `triggering_actor` (who started this attempt), from GitHub when the run is first seen. |
+| `agents` | Registered workflow: repository, workflow file, ref, App installation, estimate threshold. Has an edit revision. Deleting hides it. |
+| `runs` | One per workflow run attempt. Keeps a copy of the deployment as it was. A trigger blocks changes to that copy. Totals: estimated cost, tokens, API and rate-limit failures. The GitHub logins of `actor` (who started the run) and `triggering_actor` (who started this attempt), from GitHub when the run is first seen. |
 | `run_tokens` | Hash, run, source and expiry of each telemetry token. |
 | `otlp_seen`, `otlp_series` | Hashes of exports already counted, and the last value of each cumulative counter. |
 | `events` | One per report or status change. The ID is stable, which makes retries safe. |

@@ -200,7 +200,7 @@ func TestOTLPRoutesCheckTokenAndFormatBeforeService(t *testing.T) {
 
 func TestTelemetryLabelsComeFromTheRun(t *testing.T) {
 	run := core.Run{ID: "run1", GitHubRunID: 777, RunAttempt: 2, GitHubURL: "https://github.com/o/r/actions/runs/777", Actor: "starter",
-		Agent: core.Agent{ID: "agent", Name: "Reviewer", Owner: "o", Repository: "r", Workflow: "review.yml"}}
+		Deployment: core.Deployment{ID: "agent", Name: "Reviewer", Owner: "o", Repository: "r", Workflow: "review.yml"}}
 	got := labels(core.TelemetryOrigin{Run: run, Source: "review"})
 	want := map[string]string{"agbredo.agent.id": "agent", "agbredo.agent.name": "Reviewer", "agbredo.run.id": "run1", "agbredo.source": "review",
 		"github.repository": "o/r", "github.workflow": "review.yml", "github.run_id": "777", "github.run_attempt": "2",
