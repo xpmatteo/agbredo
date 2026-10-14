@@ -42,7 +42,8 @@ func New(url, auth string, logger *slog.Logger) *Forwarder {
 	if url == "" {
 		return nil
 	}
-	return &Forwarder{url: strings.TrimRight(url, "/"), auth: auth, client: &http.Client{Timeout: 10 * time.Second}, logger: logger, queue: make(chan item, 100)}
+	// A pasted secret often ends in a newline, which is not allowed in a header.
+	return &Forwarder{url: strings.TrimRight(url, "/"), auth: strings.TrimSpace(auth), client: &http.Client{Timeout: 10 * time.Second}, logger: logger, queue: make(chan item, 100)}
 }
 
 // Send labels the body and queues it. signal is metrics, logs or traces.
@@ -134,7 +135,32 @@ func Label(body []byte, key string, labels map[string]string) ([]byte, error) {
 		}
 		resource["attributes"] = attributes
 	}
+	if key == "resourceLogs" {
+		doublesToStrings(doc)
+	}
 	return json.Marshal(doc)
+}
+
+// doublesToStrings turns every {"doubleValue": n} into {"stringValue": "n"}.
+// OpenObserve (v1.0.4) refuses OTLP JSON logs with a decimal doubleValue,
+// such as Claude Code's cost_usd. All are turned, not only decimals, so a
+// field always has the same type. Integer fields like cost_usd_micros stay.
+func doublesToStrings(x any) {
+	switch v := x.(type) {
+	case map[string]any:
+		if n, ok := v["doubleValue"].(json.Number); ok && len(v) == 1 {
+			delete(v, "doubleValue")
+			v["stringValue"] = n.String()
+			return
+		}
+		for _, child := range v {
+			doublesToStrings(child)
+		}
+	case []any:
+		for _, child := range v {
+			doublesToStrings(child)
+		}
+	}
 }
 
 func isReserved(key any) bool {

@@ -60,6 +60,24 @@ func TestLabelReplacesReservedAttributesAndKeepsTheRest(t *testing.T) {
 	}
 }
 
+func TestLabelTurnsLogDoublesIntoStrings(t *testing.T) {
+	body := `{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"attributes":[
+		{"key":"cost_usd","value":{"doubleValue":0.0023918600000000004}},
+		{"key":"cost_usd_micros","value":{"intValue":2392}}]}]}]}]}`
+	out, err := Label([]byte(body), "resourceLogs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(out, []byte(`{"stringValue":"0.0023918600000000004"}`)) || !bytes.Contains(out, []byte(`{"intValue":2392}`)) || bytes.Contains(out, []byte("doubleValue")) {
+		t.Fatalf("doubles not turned into strings: %s", out)
+	}
+	// Metrics keep their doubles.
+	metrics := `{"resourceMetrics":[{"x":{"doubleValue":0.5}}]}`
+	if out, _ = Label([]byte(metrics), "resourceMetrics", nil); !bytes.Contains(out, []byte(`"doubleValue":0.5`)) {
+		t.Fatalf("metrics changed: %s", out)
+	}
+}
+
 func TestLabelAddsAResourceWhenMissing(t *testing.T) {
 	out, err := Label([]byte(`{"resourceLogs":[{"scopeLogs":[]}]}`), "resourceLogs", map[string]string{"agbredo.source": "review"})
 	if err != nil {
@@ -77,7 +95,7 @@ func TestForwarderPostsWithBasicAuth(t *testing.T) {
 		got <- request{r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("Content-Type")}
 	}))
 	defer store.Close()
-	f := New(store.URL+"/api/default/", "c2VjcmV0", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	f := New(store.URL+"/api/default/", "c2VjcmV0\n", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go f.Run(ctx)
