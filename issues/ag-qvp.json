@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T09:30:00Z",
+  "description": "Agree on domain words (Agent, Version, Deployment, Run, ...) with Matt and record them in docs/glossary.md, noting where code and schema disagree today.",
+  "id": "ag-qvp",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Add docs/glossary.md: domain terms (ubiquitous language)",
+  "type": "task",
+  "updated_at": "2026-10-14T09:30:00Z"
+}
