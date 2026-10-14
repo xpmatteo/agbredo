@@ -56,7 +56,7 @@ func TestGetRunWorkflowIdentity(t *testing.T) {
 		t.Errorf("unexpected request %s", r.URL.Path)
 		w.WriteHeader(404)
 	})
-	run, err := b.GetRun(context.Background(), core.Agent{Owner: "o", Repository: "r"}, 123)
+	run, err := b.GetRun(context.Background(), core.Deployment{Owner: "o", Repository: "r"}, 123)
 	if err != nil || run.Workflow != "continue.yml" || run.Ref != "main" {
 		t.Fatalf("wrong workflow: %#v %v", run, err)
 	}
@@ -69,7 +69,7 @@ func TestGetHistoricalWorkflowAttempt(t *testing.T) {
 		}
 		w.Write([]byte(`{"id":123,"run_attempt":2,"path":".github/workflows/existing.yml","head_branch":"main","status":"completed","conclusion":"failure"}`))
 	})
-	run, err := b.GetRunAttempt(context.Background(), core.Agent{Owner: "o", Repository: "r"}, 123, 2)
+	run, err := b.GetRunAttempt(context.Background(), core.Deployment{Owner: "o", Repository: "r"}, 123, 2)
 	if err != nil || run.Attempt != 2 || run.Workflow != "existing.yml" || run.Conclusion != "failure" {
 		t.Fatalf("historical attempt not retained: %#v %v", run, err)
 	}
@@ -80,7 +80,7 @@ func TestExternalFailureIsReturned(t *testing.T) {
 		w.WriteHeader(403)
 		w.Write([]byte(`{"message":"forbidden"}`))
 	})
-	a := core.Agent{Owner: "o", Repository: "r"}
+	a := core.Deployment{Owner: "o", Repository: "r"}
 	if _, err := b.GetRun(context.Background(), a, 1); err == nil {
 		t.Fatal("run lookup failure masked")
 	}

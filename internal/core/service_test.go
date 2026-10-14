@@ -18,7 +18,7 @@ type fakeBackend struct {
 	workflows map[int64]WorkflowRun
 }
 
-func (f *fakeBackend) GetRun(_ context.Context, _ Agent, id int64) (WorkflowRun, error) {
+func (f *fakeBackend) GetRun(_ context.Context, _ Deployment, id int64) (WorkflowRun, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	r, ok := f.workflows[id]
@@ -27,30 +27,30 @@ func (f *fakeBackend) GetRun(_ context.Context, _ Agent, id int64) (WorkflowRun,
 	}
 	return r, nil
 }
-func (f *fakeBackend) GetRunAttempt(ctx context.Context, a Agent, id int64, attempt int64) (WorkflowRun, error) {
+func (f *fakeBackend) GetRunAttempt(ctx context.Context, a Deployment, id int64, attempt int64) (WorkflowRun, error) {
 	return f.GetRun(ctx, a, id)
 }
 func (f *fakeBackend) put(r WorkflowRun) { f.mu.Lock(); defer f.mu.Unlock(); f.workflows[r.ID] = r }
 
-func validAgent() Agent {
-	return Agent{Name: "Example", Owner: "acme", Repository: "agent", Workflow: "agent.yml", Ref: "main", InstallationID: 123, BudgetMicros: 1_000_000, Enabled: true}
+func validDeployment() Deployment {
+	return Deployment{Name: "Example", Owner: "acme", Repository: "agent", Workflow: "agent.yml", Ref: "main", InstallationID: 123, BudgetMicros: 1_000_000, Enabled: true}
 }
-func TestAgentValidation(t *testing.T) {
-	if err := ValidateAgent(validAgent()); err != nil {
+func TestDeploymentValidation(t *testing.T) {
+	if err := ValidateDeployment(validDeployment()); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
 		name   string
-		change func(*Agent)
+		change func(*Deployment)
 	}{
-		{"empty name", func(a *Agent) { a.Name = "" }}, {"owner path", func(a *Agent) { a.Owner = "../acme" }}, {"workflow path", func(a *Agent) { a.Workflow = "../x.yml" }},
-		{"invalid reference", func(a *Agent) { a.Ref = "main;\n" }}, {"installation", func(a *Agent) { a.InstallationID = 0 }}, {"negative budget", func(a *Agent) { a.BudgetMicros = -1 }},
+		{"empty name", func(a *Deployment) { a.Name = "" }}, {"owner path", func(a *Deployment) { a.Owner = "../acme" }}, {"workflow path", func(a *Deployment) { a.Workflow = "../x.yml" }},
+		{"invalid reference", func(a *Deployment) { a.Ref = "main;\n" }}, {"installation", func(a *Deployment) { a.InstallationID = 0 }}, {"negative budget", func(a *Deployment) { a.BudgetMicros = -1 }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			a := validAgent()
+			a := validDeployment()
 			c.change(&a)
-			if ValidateAgent(a) == nil {
+			if ValidateDeployment(a) == nil {
 				t.Fatal("accepted invalid agent")
 			}
 		})
@@ -116,35 +116,35 @@ func testService(t *testing.T) (*Service, *fakeBackend) {
 	fake := &fakeBackend{workflows: map[int64]WorkflowRun{}}
 	return &Service{DB: pool, Backend: fake}, fake
 }
-func TestDatabaseAgentCRUDSnapshots(t *testing.T) {
+func TestDatabaseDeploymentCRUDSnapshots(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := reportAgent(t, s, f)
+	a, i := reportDeployment(t, s, f)
 	r, _, err := s.Report(ctx, a.ID, finishedReport(), i)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.Name = "Updated"
-	a, err = s.SaveAgent(ctx, a)
+	a, err = s.SaveDeployment(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Version != 2 {
+	if a.Revision != 2 {
 		t.Fatal(a)
 	}
 	read, err := s.Run(ctx, r.ID)
-	if err != nil || read.Agent.Name != "Example" || read.Agent.Version != 1 {
+	if err != nil || read.Deployment.Name != "Example" || read.Deployment.Revision != 1 {
 		t.Fatal(read, err)
 	}
 	stale := a
-	stale.Version = 1
-	if _, err = s.SaveAgent(ctx, stale); !errors.Is(err, ErrConflict) {
+	stale.Revision = 1
+	if _, err = s.SaveDeployment(ctx, stale); !errors.Is(err, ErrConflict) {
 		t.Fatal("stale update accepted", err)
 	}
-	if err = s.DeleteAgent(ctx, a.ID); err != nil {
+	if err = s.DeleteDeployment(ctx, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Agent(ctx, a.ID); !errors.Is(err, ErrNotFound) {
+	if _, err = s.Deployment(ctx, a.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}
 	if _, err = s.Run(ctx, r.ID); err != nil {
@@ -154,7 +154,7 @@ func TestDatabaseAgentCRUDSnapshots(t *testing.T) {
 func TestDatabaseWebhookAndReconciliation(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := reportAgent(t, s, f)
+	a, i := reportDeployment(t, s, f)
 	r, _, err := s.Report(ctx, a.ID, Report{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "job", Phase: "started", Version: "unknown"}, i)
 	if err != nil {
 		t.Fatal(err)

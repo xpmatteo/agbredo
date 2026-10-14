@@ -65,7 +65,7 @@ For people. A browser session is needed: GitHub OAuth, then a signed cookie. A u
 | --- | --- |
 | `GET /` | Overview: active runs, failures, estimated consumption, recent runs |
 | `GET /agents` | List agents, and the form to register one |
-| `POST /agents` | Register an agent |
+| `POST /agents` | Register a deployment |
 | `GET /agents/{id}` | One agent, and its form |
 | `POST /agents/{id}` | Save an agent. Refused if the version is old |
 | `POST /agents/{id}/delete` | Hide an agent. Its runs stay |

@@ -22,9 +22,9 @@ var assets embed.FS
 
 type Service interface {
 	Fleet(context.Context) (core.Fleet, error)
-	Agent(context.Context, string) (core.Agent, error)
-	SaveAgent(context.Context, core.Agent) (core.Agent, error)
-	DeleteAgent(context.Context, string) error
+	Deployment(context.Context, string) (core.Deployment, error)
+	SaveDeployment(context.Context, core.Deployment) (core.Deployment, error)
+	DeleteDeployment(context.Context, string) error
 	Run(context.Context, string) (core.Run, error)
 	Events(context.Context, string) ([]core.Event, error)
 }
@@ -46,7 +46,7 @@ type page struct {
 	User           string
 	CSRF           string
 	Fleet          core.Fleet
-	Agent          core.Agent
+	Deployment     core.Deployment
 	Run            core.Run
 	Events         []core.Event
 	Active, Failed int
@@ -93,10 +93,10 @@ func New(service Service, auth Auth) *Server {
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /{$}", s.protect(s.dashboard, false))
 	mux.HandleFunc("GET /agents", s.protect(s.agents, false))
-	mux.HandleFunc("POST /agents", s.protect(s.saveAgent, true))
+	mux.HandleFunc("POST /agents", s.protect(s.saveDeployment, true))
 	mux.HandleFunc("GET /agents/{id}", s.protect(s.agent, false))
-	mux.HandleFunc("POST /agents/{id}", s.protect(s.saveAgent, true))
-	mux.HandleFunc("POST /agents/{id}/delete", s.protect(s.deleteAgent, true))
+	mux.HandleFunc("POST /agents/{id}", s.protect(s.saveDeployment, true))
+	mux.HandleFunc("POST /agents/{id}/delete", s.protect(s.deleteDeployment, true))
 	mux.HandleFunc("GET /runs", s.protect(s.runs, false))
 	mux.HandleFunc("GET /runs/{id}", s.protect(s.run, false))
 	mux.HandleFunc("GET /static/style.css", func(w http.ResponseWriter, r *http.Request) {
@@ -181,19 +181,19 @@ func (s *Server) agents(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "agents", page{Title: "Agent registry", Fleet: f, Agent: core.Agent{Ref: "main", Enabled: true}})
+	s.render(w, r, "agents", page{Title: "Deployments", Fleet: f, Deployment: core.Deployment{Ref: "main", Enabled: true}})
 }
 
 func (s *Server) agent(w http.ResponseWriter, r *http.Request) {
-	a, err := s.service.Agent(r.Context(), r.PathValue("id"))
+	a, err := s.service.Deployment(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "agent", page{Title: a.Name, Agent: a})
+	s.render(w, r, "agent", page{Title: a.Name, Deployment: a})
 }
 
-func (s *Server) saveAgent(w http.ResponseWriter, r *http.Request) {
+func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {
 	budget, err := parseMoney(r.FormValue("budget"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -204,20 +204,20 @@ func (s *Server) saveAgent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Installation ID must be a positive integer.", http.StatusBadRequest)
 		return
 	}
-	version := int64(0)
+	revision := int64(0)
 	if r.PathValue("id") != "" {
-		version, err = strconv.ParseInt(r.FormValue("version"), 10, 64)
-		if err != nil || version <= 0 {
-			http.Error(w, "Invalid agent version. Reload the page.", http.StatusBadRequest)
+		revision, err = strconv.ParseInt(r.FormValue("version"), 10, 64)
+		if err != nil || revision <= 0 {
+			http.Error(w, "Invalid agent revision. Reload the page.", http.StatusBadRequest)
 			return
 		}
 	}
-	a := core.Agent{ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, BudgetMicros: budget, Enabled: r.FormValue("enabled") == "on", Version: version}
-	if err := core.ValidateAgent(a); err != nil {
+	a := core.Deployment{ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, BudgetMicros: budget, Enabled: r.FormValue("enabled") == "on", Revision: revision}
+	if err := core.ValidateDeployment(a); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	a, err = s.service.SaveAgent(r.Context(), a)
+	a, err = s.service.SaveDeployment(r.Context(), a)
 	if err != nil {
 		s.failure(w, err)
 		return
@@ -225,8 +225,8 @@ func (s *Server) saveAgent(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/agents/"+a.ID, http.StatusSeeOther)
 }
 
-func (s *Server) deleteAgent(w http.ResponseWriter, r *http.Request) {
-	if err := s.service.DeleteAgent(r.Context(), r.PathValue("id")); err != nil {
+func (s *Server) deleteDeployment(w http.ResponseWriter, r *http.Request) {
+	if err := s.service.DeleteDeployment(r.Context(), r.PathValue("id")); err != nil {
 		s.failure(w, err)
 		return
 	}
@@ -253,7 +253,7 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "run", page{Title: run.Agent.Name + " · Run", Run: run, Events: events})
+	s.render(w, r, "run", page{Title: run.Deployment.Name + " · Run", Run: run, Events: events})
 }
 
 func money(micros int64) string { return fmt.Sprintf("%d.%06d", micros/1_000_000, micros%1_000_000) }

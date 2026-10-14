@@ -23,25 +23,25 @@ import (
 
 type registrationService struct {
 	web.Service
-	registered core.Agent
+	registered core.Deployment
 }
 
 func (s *registrationService) Fleet(context.Context) (core.Fleet, error) {
 	return core.Fleet{}, nil
 }
-func (s *registrationService) SaveAgent(_ context.Context, a core.Agent) (core.Agent, error) {
+func (s *registrationService) SaveDeployment(_ context.Context, a core.Deployment) (core.Deployment, error) {
 	a.ID = "registered"
 	s.registered = a
 	return a, nil
 }
-func (s *registrationService) Agent(context.Context, string) (core.Agent, error) {
+func (s *registrationService) Deployment(context.Context, string) (core.Deployment, error) {
 	return s.registered, nil
 }
 
 // Exercise a browser's ordinary form submission through the real security,
 // session, CSRF, template and registration handlers. HTTP test clients cannot
 // reproduce how Referrer-Policy changes the browser-generated Origin header.
-func TestBrowserAgentRegistration(t *testing.T) {
+func TestBrowserDeploymentRegistration(t *testing.T) {
 	var chrome string
 	for _, candidate := range []string{"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium", "chromium-browser"} {
 		if path, err := exec.LookPath(candidate); err == nil {

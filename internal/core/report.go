@@ -90,7 +90,7 @@ func reportRunID(agent string, run int64, attempt int64) string {
 	return hex.EncodeToString(h[:])
 }
 
-func verifyReport(a Agent, i Identity, gh WorkflowRun) error {
+func verifyReport(a Deployment, i Identity, gh WorkflowRun) error {
 	if i.Repository != a.Owner+"/"+a.Repository || i.Workflow != a.Workflow || !refMatches(a.Ref, i.Ref) || i.RunID <= 0 || i.RunAttempt <= 0 || gh.ID != i.RunID || gh.Attempt != i.RunAttempt || gh.Workflow != a.Workflow || !refMatches(a.Ref, gh.Ref) {
 		return ErrUnauthorized
 	}
@@ -106,9 +106,9 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, agentID string, i Iden
 	if err != nil && err != ErrNotFound {
 		return r, gh, err
 	}
-	a := r.Agent
+	a := r.Deployment
 	if err == ErrNotFound {
-		a, err = readJSON[Agent](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR SHARE", agentID)
+		a, err = readJSON[Deployment](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR SHARE", agentID)
 		if err != nil {
 			return r, gh, err
 		}
@@ -124,7 +124,7 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, agentID string, i Iden
 		return r, gh, err
 	}
 	if r.ID == "" {
-		r = Run{ID: id, CorrelationID: id, Agent: a, RunAttempt: i.RunAttempt, Status: "running", BudgetMicros: a.BudgetMicros, CreatedAt: now(), UpdatedAt: now()}
+		r = Run{ID: id, CorrelationID: id, Deployment: a, RunAttempt: i.RunAttempt, Status: "running", BudgetMicros: a.BudgetMicros, CreatedAt: now(), UpdatedAt: now()}
 		r.GitHubRunID = i.RunID
 		r.Actor, r.TriggeringActor = gh.Actor, gh.TriggeringActor
 		r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, i.RunID)
@@ -137,7 +137,7 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, agentID string, i Iden
 		return r, gh, err
 	}
 	// A racing first report must also match the snapshot which won insertion.
-	if err = verifyReport(r.Agent, i, gh); err != nil {
+	if err = verifyReport(r.Deployment, i, gh); err != nil {
 		return r, gh, err
 	}
 	return r, gh, nil
@@ -175,7 +175,7 @@ func (s *Service) Report(ctx context.Context, agentID string, o Report, i Identi
 			status = "skipped"
 		}
 	}
-	e := Event{ID: fmt.Sprintf("github:%d:%d:%s:%s", i.RunID, i.RunAttempt, o.Source, o.Phase), RunID: id, CorrelationID: id, AgentID: r.Agent.ID, AgentVersion: r.Agent.Version, Timestamp: now(), Type: "claude.execution", Status: status, DurationMS: o.DurationMS, Claude: &o, Message: "Claude Code execution report; consumption is an API-equivalent estimate, subscription charges are unknown"}
+	e := Event{ID: fmt.Sprintf("github:%d:%d:%s:%s", i.RunID, i.RunAttempt, o.Source, o.Phase), RunID: id, CorrelationID: id, DeploymentID: r.Deployment.ID, DeploymentRevision: r.Deployment.Revision, Timestamp: now(), Type: "claude.execution", Status: status, DurationMS: o.DurationMS, Claude: &o, Message: "Claude Code execution report; consumption is an API-equivalent estimate, subscription charges are unknown"}
 	if o.EstimatedCostMicros != nil {
 		e.CostMicros = *o.EstimatedCostMicros
 	}
