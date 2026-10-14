@@ -9,9 +9,15 @@
   "id": "ag-s99.6",
   "labels": [],
   "parent": "ag-s99",
+  "comments": [
+    {
+      "text": "Reviewed; draft PR https://github.com/xpmatteo/agbredo/pull/1 (branch ag-s99.6/deployment-rename). ag-s99.8 and ag-s99.7 are stacked on this branch. Close after merge.",
+      "timestamp": "2026-10-14T12:55:25Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Rename core.Agent to Deployment in Go code",
   "type": "task",
-  "updated_at": "2026-10-14T12:49:01Z"
+  "updated_at": "2026-10-14T12:55:25Z"
 }
