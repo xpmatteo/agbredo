@@ -2,6 +2,8 @@
   "assignee": "Claude",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-14T14:42:57Z",
+  "close_reason": "Resolved in conversation 2026-10-14: Matt drops the reporter (ag-s99.11), so Report goes away; Event stays as the run's history. Observation = telemetry, webhooks, polls; the doc wording lands with ag-s99.11.",
   "created": "2026-10-14T12:23:00Z",
   "description": "Use \"observation\" as the umbrella word, to match docs/00-glossary.md. Mostly naming and docs; no design talk unless the stored data changes.\n\nGlossary: an observation is anything that arrives about a run: reporter reports, telemetry, GitHub webhooks and polls. Today the code splits these into core.Report (a reporter report), core.Event (one entry in a run's history, from a report or a status change) and the telemetry path (internal/core/telemetry.go). The report URL already says /observations (docs/20-routes.md); docs/10-design.md calls it a leftover name.\n\nWork: decide with a short proposal to Matt whether Report and Event keep their names as kinds of observation, or get renamed. Then update docs/10-design.md (and remove the \"leftover name\" note in Limits) and any dashboard wording.\n\nKeep URLs, JSON keys and the events table name for backwards compatibility.",
   "id": "ag-s99.9",
@@ -18,8 +20,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Use Observation as the umbrella word for reports, telemetry and webhooks",
   "type": "task",
-  "updated_at": "2026-10-14T14:40:48Z"
+  "updated_at": "2026-10-14T14:42:57Z"
 }
