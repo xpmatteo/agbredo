@@ -14,8 +14,8 @@ Agbredo shows what a fleet of existing GitHub Actions agents did and what they c
 
 1. An agent's workflow runs on its own trigger (schedule, push, manual).
 2. Before each Claude Code step, the telemetry step posts to `POST /api/agents/{id}/otlp-token` with the job's OIDC token and a `source` name (the name of the agent run).
-3. The server checks the OIDC token (issuer, signature, expiry, audience = `AGBREDO_BASE_URL`). It requires that the repository, workflow file and ref match the registered deployment. It then asks GitHub for that run attempt, using the GitHub App, and requires that it matches.
-4. The first valid request creates the run. Later requests for the same run attempt find it.
+3. The server checks the OIDC token (issuer, signature, expiry, audience = `AGBREDO_BASE_URL`). It requires that the repository and workflow file match the registered deployment. The ref is not checked: runs from any branch or tag belong to the deployment. It then asks GitHub for that run attempt, using the GitHub App, and requires that it matches.
+4. The first valid request creates the run, and records on it the ref it ran from (the OIDC `ref` claim). Later requests for the same run attempt find it.
 5. GitHub `workflow_run` webhooks and the poll set the run's status from GitHub (running, completed, failed, cancelled). Each status change adds one event to the run's history. A finished state is never reopened.
 
 ### Telemetry flow
@@ -35,8 +35,8 @@ A run is registered only when a token is requested. Nothing scans GitHub for old
 
 | Table | Holds |
 | --- | --- |
-| `agents` | Registered workflow: repository, workflow file, ref, App installation, estimate threshold. Has an edit revision. Deleting hides it. |
-| `runs` | One per workflow run attempt. Keeps a copy of the deployment as it was. A trigger blocks changes to that copy. Totals: estimated cost, tokens, API and rate-limit failures. The GitHub logins of `actor` (who started the run) and `triggering_actor` (who started this attempt), from GitHub when the run is first seen. |
+| `agents` | Registered workflow: repository, workflow file, App installation, estimate threshold. Has an edit revision. Deleting hides it. A repository + workflow file is registered once among the deployments not hidden (a unique index; owner and repository ignore case). Older rows also hold a `ref`, which is no longer checked. |
+| `runs` | One per workflow run attempt. Keeps a copy of the deployment as it was, and the ref the run ran from. Older runs have no ref of their own; the run page then shows the ref in their copy, if any. A trigger blocks changes to that copy. Totals: estimated cost, tokens, API and rate-limit failures. The GitHub logins of `actor` (who started the run) and `triggering_actor` (who started this attempt), from GitHub when the run is first seen. |
 | `run_tokens` | Hash, run, agent run (column `source`) and expiry of each telemetry token. |
 | `otlp_seen`, `otlp_series` | Hashes of exports already counted, and the last value of each cumulative counter. |
 | `events` | The run's history: one per GitHub status change. The ID is stable, which makes retries safe. Rows of type `claude.execution` come from the former report route; they still load, and are deleted by hand only. |
@@ -60,6 +60,7 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 - The threshold only marks a run. It cannot stop an agent.
 - A run is matched by its caller workflow only. Agbredo does not yet record or check which pipeline or pipeline version a run used.
 - Any code that the caller workflow runs with `id-token: write` (the pipeline, or any workflow or action it calls) can get an OIDC token, and with it a telemetry token for that registered deployment.
+- The ref is not checked. A workflow file with the registered name runs on any branch or tag, so anyone who can push a branch to the repository can get a telemetry token for that deployment. Pull request events are refused.
 - Telemetry is accepted only as OTLP JSON (`OTEL_EXPORTER_OTLP_PROTOCOL=http/json`), not protobuf.
 - Telemetry sent after GitHub marks the run finished is refused. Claude Code sends its last export when it exits, which is before the run finishes. A job that is killed before that loses the last part of its usage.
 - Forwarding is best effort. Telemetry dropped while the store is down is not sent again. A repeated export is forwarded again, though it is counted once in PostgreSQL.

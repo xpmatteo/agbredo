@@ -22,7 +22,7 @@ These are kept stable. Deployed workflows call them. Do not rename them.
 
 Gets a token for one Claude Code step to send its telemetry. `Authorization: Bearer <OIDC token>`. Creates the run if it is new.
 
-- The server checks the token (issuer, signature, expiry, audience), that the repository, workflow file and ref match the deployment, and that GitHub has that run attempt.
+- The server checks the token (issuer, signature, expiry, audience), that the repository and workflow file match the deployment, and that GitHub has that run attempt. The ref is not checked; it is recorded on the run.
 - Body: `{"source": "review"}`, up to 64 KiB. Unknown fields are refused. The `source` is the name of the agent run. It is 1 to 80 letters, digits, dots, underscores or hyphens. Use a different name for each agent run.
 - `200` with `{"token": "agb_...", "expires_at": "...", "traceparent": "00-...-...-01"}`. The `traceparent` has the same trace ID for every step of a run attempt. The token lasts 6 hours, or until the run finishes. It belongs to one run attempt and one agent run. Only its hash is stored.
 - Errors: `401` missing or bad token, `400` bad body or `source`, `403` the job does not match the deployment, `404` unknown deployment, `409` the run has already finished.
@@ -60,12 +60,12 @@ For people. A browser session is needed: GitHub OAuth, then a signed cookie. A u
 | --- | --- |
 | `GET /` | Overview: active runs, failures, estimated consumption, recent runs |
 | `GET /agents` | List deployments, and the form to register one |
-| `POST /agents` | Register a deployment |
+| `POST /agents` | Register a deployment. `400` if its repository + workflow file is already registered |
 | `GET /agents/{id}` | One deployment, and its form |
-| `POST /agents/{id}` | Save a deployment. Refused if the revision is old |
+| `POST /agents/{id}` | Save a deployment. Refused if the revision is old, or with `400` if another deployment has its repository + workflow file |
 | `POST /agents/{id}/delete` | Hide a deployment. Its runs stay |
 | `GET /runs` | All runs |
-| `GET /runs/{id}` | One run: totals, Claude Code steps, event timeline |
+| `GET /runs/{id}` | One run: totals, ref, Claude Code steps, event timeline |
 | `GET /static/style.css` | The stylesheet |
 
 ## Sign-in

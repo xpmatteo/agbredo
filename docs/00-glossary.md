@@ -8,7 +8,7 @@ The words we use for the domain. Code, database and dashboard should use the sam
 | --- | --- | --- |
 | Pipeline | One implementation, kept in a central repository as a reusable workflow. Identified by its path, e.g. `org/agbredo-agents/.github/workflows/triage.yml`. | Not in code. |
 | Version | A pipeline's version: the git ref of the central repository it ran from (tag or SHA). GitHub supplies it in the OIDC `job_workflow_ref` claim, so the pipeline cannot fake it. | Not stored. `core.Deployment.Revision` is an edit counter on the registration, used to detect edit conflicts. It is not this. |
-| Deployment | A pipeline used in one repository, through one caller workflow. Identified by repository + workflow file. One caller workflow calls exactly one pipeline. Created by the first valid run; no registration by hand. | `core.Deployment` and the `agents` table. Today they also hold the ref, are registered by hand, and have no pipeline. |
+| Deployment | A pipeline used in one repository, through one caller workflow. Identified by repository + workflow file. One caller workflow calls exactly one pipeline. Created by the first valid run; no registration by hand. | `core.Deployment` and the `agents` table, unique on repository + workflow file. Today they are registered by hand and have no pipeline. Older rows still hold a `ref`, which is no longer checked. |
 | Run | One GitHub run attempt of a deployment, with its exact version and configuration. | `core.Run`, `runs` table. One per attempt. |
 | Agent | A named role inside a pipeline, e.g. `triage` or `reviewer`. A step in the pipeline's YAML starts it. | Not in code. |
 | Agent run | One execution of an agent inside a run: one Claude Code invocation. A run has zero or more agent runs. | `Run.AgentRuns`, `AgentRunUsage`. The wire names stay "source" and "sources": the `source` input, the `source` and `sources` JSON keys, `run_tokens.source`, the `agbredo.source` label. |
@@ -20,7 +20,7 @@ The words we use for the domain. Code, database and dashboard should use the sam
 | Term | Meaning | Code today |
 | --- | --- | --- |
 | Attempt | GitHub's word. "Re-run jobs" keeps the GitHub run ID and adds 1 to `run_attempt`. Each attempt is its own Run. The dashboard may group attempts that share a GitHub run ID, but that group has no domain name. | `Run.RunAttempt`, `Run.GitHubRunID`. |
-| Configuration | What a run ran with: trigger event, ref, threshold at the time, and the Claude Code version, model and effort. | Threshold is copied into the run. Claude Code version is stored. Trigger event, model and effort are not. |
+| Configuration | What a run ran with: trigger event, ref, threshold at the time, and the Claude Code version, model and effort. | Ref (`Run.Ref`, from the OIDC identity) and threshold are copied into the run. Claude Code version is stored. Trigger event, model and effort are not. |
 | Threshold | Estimated cost per run above which a run is flagged. It does not stop anything. | `ThresholdMicros`, `OverThreshold`. |
 | Estimated cost | Cost of the tokens at API prices. Not the subscription charge. | `CostMicros`. |
 | Escalation | An agent run hands work to a person, usually by opening a GitHub issue or PR. | Not in code. |

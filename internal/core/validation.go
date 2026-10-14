@@ -28,9 +28,6 @@ func ValidateDeployment(a Deployment) error {
 	if !file.MatchString(a.Workflow) {
 		return fmt.Errorf("provide a workflow filename ending in .yml or .yaml")
 	}
-	if !validRef(a.Ref) {
-		return fmt.Errorf("provide a valid Git branch or tag reference")
-	}
 	if a.InstallationID <= 0 {
 		return fmt.Errorf("GitHub App installation ID must be positive")
 	}
@@ -38,21 +35,6 @@ func ValidateDeployment(a Deployment) error {
 		return fmt.Errorf("threshold must be between $0 and $1,000,000")
 	}
 	return nil
-}
-func validRef(ref string) bool {
-	if ref == "" || len(ref) > 250 || strings.ContainsAny(ref, " ~^:?*[\\\t\r\n") || strings.Contains(ref, "..") || strings.Contains(ref, "@{") || strings.HasSuffix(ref, ".") || strings.HasSuffix(ref, "/") || strings.HasSuffix(ref, ".lock") {
-		return false
-	}
-	return true
-}
-func refMatches(configured, actual string) bool {
-	if actual == configured {
-		return true
-	}
-	if strings.HasPrefix(configured, "refs/") {
-		return !strings.HasPrefix(actual, "refs/") && (configured == "refs/heads/"+actual || configured == "refs/tags/"+actual)
-	}
-	return actual == "refs/heads/"+configured
 }
 func Terminal(s string) bool { return s == "completed" || s == "failed" || s == "cancelled" }
 

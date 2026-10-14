@@ -64,6 +64,7 @@ func New(service Service, auth Auth) *Server {
 			return "$" + money(r.CostMicros)
 		},
 		"runTokens": runTokens,
+		"runRef":    runRef,
 		"agentRunCost": func(u *core.AgentRunUsage) string {
 			if u.CostNanos == nil {
 				return "Unavailable"
@@ -143,6 +144,8 @@ func (s *Server) failure(w http.ResponseWriter, err error) {
 		http.Error(w, "You are not authorized to perform this action.", http.StatusForbidden)
 	case errors.Is(err, core.ErrConflict):
 		http.Error(w, core.Redact(err.Error())+". Reload the record to review its status.", http.StatusConflict)
+	case errors.Is(err, core.ErrInvalid):
+		http.Error(w, core.Redact(err.Error())+".", http.StatusBadRequest)
 	default:
 		slog.Error("dashboard operation failed", "error", core.Redact(err.Error()))
 		http.Error(w, "The operation failed. Check the application logs and reload the record before retrying.", http.StatusInternalServerError)
@@ -174,7 +177,7 @@ func (s *Server) deployments(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "agents", page{Title: "Deployments", Fleet: f, Deployment: core.Deployment{Ref: "main", Enabled: true}})
+	s.render(w, r, "agents", page{Title: "Deployments", Fleet: f, Deployment: core.Deployment{Enabled: true}})
 }
 
 func (s *Server) deployment(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +208,7 @@ func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a := core.Deployment{ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, ThresholdMicros: threshold, Enabled: r.FormValue("enabled") == "on", Revision: revision}
+	a := core.Deployment{ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), InstallationID: installation, ThresholdMicros: threshold, Enabled: r.FormValue("enabled") == "on", Revision: revision}
 	if err := core.ValidateDeployment(a); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -288,6 +291,19 @@ func measured(n *int64) string {
 	return strconv.FormatInt(*n, 10)
 }
 func runTokens(r core.Run, kind string) string { return usageTokens(r.ClaudeUsage, kind) }
+
+// runRef is the git ref the run ran from. Runs created before the ref was
+// recorded on the run fall back to the ref of their deployment copy.
+func runRef(r core.Run) string {
+	switch {
+	case r.Ref != "":
+		return r.Ref
+	case r.Deployment.Ref != "":
+		return r.Deployment.Ref
+	default:
+		return "Unavailable"
+	}
+}
 func usageTokens(u *core.ClaudeUsage, kind string) string {
 	if u == nil {
 		return "Unavailable"

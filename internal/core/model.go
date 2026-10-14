@@ -32,14 +32,21 @@ func ID() string {
 
 // JSON keys keep older names (agent, version, budget_micros, over_budget)
 // so that stored documents still load. Do not rename them.
+//
+// A deployment is identified by repository + workflow file. Runs from any ref
+// belong to it; each run records its own ref.
 type Deployment struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Description     string `json:"description"`
-	Owner           string `json:"owner"`
-	Repository      string `json:"repository"`
-	Workflow        string `json:"workflow"`
-	Ref             string `json:"ref"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Owner       string `json:"owner"`
+	Repository  string `json:"repository"`
+	Workflow    string `json:"workflow"`
+	// Ref is legacy: deployments were once tied to one ref. Nothing sets or
+	// matches it any more. It is kept so that stored deployments, and the
+	// copies kept in older runs, still load unchanged, and so that a run
+	// without its own Ref can show the ref its deployment had.
+	Ref             string `json:"ref,omitempty"`
 	InstallationID  int64  `json:"installation_id"`
 	ThresholdMicros int64  `json:"budget_micros"`
 	Enabled         bool   `json:"enabled"`
@@ -63,6 +70,9 @@ type Run struct {
 	OverThreshold          bool         `json:"over_budget"`
 	GitHubRunID            int64        `json:"github_run_id"`
 	GitHubURL              string       `json:"github_url"`
+	// The git ref the run ran from, e.g. refs/heads/main, from the job's OIDC
+	// identity when the run is first created. Older runs have none.
+	Ref string `json:"ref,omitempty"`
 	// GitHub logins, from GitHub when the run is first seen. Older runs have none.
 	Actor           string    `json:"actor,omitempty"`
 	TriggeringActor string    `json:"triggering_actor,omitempty"`

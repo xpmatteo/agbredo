@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -27,6 +28,7 @@ type testService struct {
 	run        core.Run
 	events     []core.Event
 	saved      core.Deployment
+	saveErr    error
 }
 
 func (s *testService) Fleet(context.Context) (core.Fleet, error) {
@@ -38,7 +40,7 @@ func (s *testService) Deployment(context.Context, string) (core.Deployment, erro
 func (s *testService) SaveDeployment(_ context.Context, a core.Deployment) (core.Deployment, error) {
 	s.saved = a
 	a.ID = "agent-1"
-	return a, nil
+	return a, s.saveErr
 }
 func (s *testService) DeleteDeployment(context.Context, string) error       { return nil }
 func (s *testService) Run(context.Context, string) (core.Run, error)        { return s.run, nil }
@@ -107,9 +109,48 @@ func TestThresholdDecimalConversion(t *testing.T) {
 
 func TestDeploymentFormExactCost(t *testing.T) {
 	s := &testService{}
-	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents", url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"example"}, "repository": {"example"}, "workflow": {"agent.yml"}, "ref": {"main"}, "installation_id": {"123"}, "budget": {"0.000003"}, "enabled": {"on"}})
+	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents", url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"example"}, "repository": {"example"}, "workflow": {"agent.yml"}, "installation_id": {"123"}, "budget": {"0.000003"}, "enabled": {"on"}})
 	if w.Code != http.StatusSeeOther || s.saved.ThresholdMicros != 3 {
 		t.Fatalf("save status = %d, micros = %d", w.Code, s.saved.ThresholdMicros)
+	}
+}
+
+// A deployment is identified by repository + workflow file: the form asks for
+// no ref, and a duplicate is refused with a readable message.
+func TestDeploymentFormHasNoRefAndRefusesDuplicates(t *testing.T) {
+	s := &testService{deployment: core.Deployment{ID: "agent-1", Owner: "acme", Repository: "agent", Workflow: "agent.yml", Ref: "main"}}
+	for _, path := range []string{"/agents", "/agents/agent-1"} {
+		body := serve(s, testAuth{"admin", true}, http.MethodGet, path, nil).Body.String()
+		if strings.Contains(body, `name="ref"`) || strings.Contains(body, "@ main") {
+			t.Fatalf("%s still shows a ref: %s", path, body)
+		}
+	}
+	s.saveErr = fmt.Errorf("a deployment of acme/agent with workflow agent.yml is already registered: %w", core.ErrInvalid)
+	form := url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"acme"}, "repository": {"agent"}, "workflow": {"agent.yml"}, "installation_id": {"123"}, "budget": {"1"}, "enabled": {"on"}}
+	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents", form)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "already registered") {
+		t.Fatalf("duplicate: status = %d, body = %s", w.Code, w.Body.String())
+	}
+}
+
+// The run page shows the run's own ref. Older runs fall back to the ref of
+// their deployment copy, and otherwise show it as missing.
+func TestRunPageShowsRunRef(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  core.Run
+		want string
+	}{
+		{"own ref", core.Run{ID: "run-1", Ref: "refs/heads/feature", Deployment: core.Deployment{Ref: "main"}}, `<dt>Ref</dt><dd class="mono">refs/heads/feature</dd>`},
+		{"legacy copy", core.Run{ID: "run-1", Deployment: core.Deployment{Ref: "main"}}, `<dt>Ref</dt><dd class="mono">main</dd>`},
+		{"none", core.Run{ID: "run-1"}, `<dt>Ref</dt><dd class="mono">Unavailable</dd>`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := serve(&testService{run: tc.run}, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+			if !strings.Contains(body, tc.want) {
+				t.Fatalf("want %s in %s", tc.want, body)
+			}
+		})
 	}
 }
 
@@ -186,7 +227,7 @@ func TestRunPageShowsEachClaudeStepAndKeepsMissingValuesMissing(t *testing.T) {
 
 func TestSaveDeploymentRevisionField(t *testing.T) {
 	form := func(version string) url.Values {
-		v := url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"example"}, "repository": {"example"}, "workflow": {"agent.yml"}, "ref": {"main"}, "installation_id": {"123"}, "budget": {"1"}, "enabled": {"on"}}
+		v := url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"example"}, "repository": {"example"}, "workflow": {"agent.yml"}, "installation_id": {"123"}, "budget": {"1"}, "enabled": {"on"}}
 		if version != "" {
 			v.Set("version", version)
 		}

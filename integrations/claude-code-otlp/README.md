@@ -4,7 +4,7 @@ A small action which lets Claude Code send its OpenTelemetry straight to Agbredo
 
 ## Use
 
-1. Register the workflow in Agbredo. Set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`.
+1. Register the workflow in Agbredo: its repository and workflow file. Runs from any branch or tag belong to it. Set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`.
 2. Give the job `id-token: write`, next to its other permissions.
 3. Put the action before each Claude Code step. Refer to it in this repository, so there is nothing to copy. Give each one its own `source` name. The input is called `source` for backwards compatibility; it names the agent run. Letters, digits, dots, underscores and hyphens are allowed.
 
