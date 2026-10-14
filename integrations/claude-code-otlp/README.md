@@ -32,6 +32,7 @@ It needs `curl` and `jq`, which GitHub's Linux and macOS runners have. It does n
 
 ## Limits
 
+- `anthropics/claude-code-action` passes on only some `OTEL_*` variables (not `OTEL_METRICS_INCLUDE_VERSION`). With that action, the Claude Code version shows as unavailable. The usage numbers are not affected. Prompts and responses are off by default in Claude Code, and the server drops them anyway.
 - Settings in Claude Code's managed settings can override the environment. Then no telemetry arrives, and the dashboard shows the step's numbers as unavailable.
 - Run status and duration come from GitHub, not from this action.
 - The token lasts 6 hours. A longer step stops reporting after that.
