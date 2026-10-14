@@ -27,7 +27,7 @@ This is broad and changes slowly. It is not a task list. Do not record progress 
 - Overview of agent activity across repos.
 - History of runs.
 - Details of each run, with links to GitHub.
-- Notices when an agent escalates to a person, usually by opening a GitHub issue or PR. Prefer to learn this from GitHub webhooks. If that does not work, extend the reporter.
+- Notices when an agent escalates to a person, usually by opening a GitHub issue or PR. Prefer to learn this from GitHub webhooks.
 - Most other features an enterprise would need (access, audit, budgets), simulated.
 
 Keep new work compatible with this direction. The write boundary with GitHub is not fixed and may change.
