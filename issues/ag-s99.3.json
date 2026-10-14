@@ -6,6 +6,8 @@
   "blocks": [
     "ag-s99.4"
   ],
+  "closed_at": "2026-10-14T15:24:53Z",
+  "close_reason": "Done on branch claude/project-thread-yn74b3, reviewed; review fix refuses refs/pull/ refs. Before deploying, Matt hides live duplicates: SELECT lower(document-\u003e\u003e'owner'), lower(document-\u003e\u003e'repository'), document-\u003e\u003e'workflow', array_agg(id) FROM agents WHERE NOT deleted GROUP BY 1,2,3 HAVING count(*) \u003e 1; then UPDATE agents SET deleted = true WHERE id IN (...).",
   "created": "2026-10-14T12:22:57Z",
   "description": "DESIGN TALK (schema). Needs ag-s99.6 first.\n\nGoal: a deployment is identified by repository + workflow file, as agreed in docs/00-glossary.md. The ref is recorded per run, not part of the deployment. Runs from any branch belong to the same deployment.\n\nToday: the registration (core.Agent, agents table, JSON document) has a required Ref; validation in internal/core/validation.go:31. Matching uses it in internal/core/report.go:94 and internal/core/worker.go:49 (refMatches). The dashboard form asks for \"Default Git reference\" (internal/web/templates.html, agent-form) and the run page shows \"Repository / ref\" from the registration copy.\n\nWork: stop matching on ref; record the run's own ref (from the OIDC identity / GitHub run) on the run; show it from the run.\n\nQuestions for Matt: what to do with existing registrations that differ only by ref (merge, or keep and mark as legacy)? Is a uniqueness rule on repository + workflow file needed in the database (new migration)?\n\nKeep backwards compatibility: old stored documents with a ref must still load. Migrations are append-only.",
   "id": "ag-s99.3",
@@ -26,8 +28,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Identify a deployment by repository + workflow file",
   "type": "task",
-  "updated_at": "2026-10-14T15:15:40Z"
+  "updated_at": "2026-10-14T15:24:53Z"
 }
