@@ -13,11 +13,15 @@
     {
       "text": "From review of ag-s99.1 (2026-10-14): today a report needs a registered, enabled deployment matching repo + workflow + ref AND the GitHub App installed on the repo. Once deployments are created by their first valid run, the App installation becomes the only gate, and with reusable workflows any code in the caller job with id-token: write can create/report as a deployment. Update the Trust section of docs/10-design.md when this lands, and discuss with Matt whether that is enough.",
       "timestamp": "2026-10-14T12:54:18Z"
+    },
+    {
+      "text": "2026-10-14: recommended answers posted to Matt in the project thread; awaiting his decision before code.",
+      "timestamp": "2026-10-14T14:32:07Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Create deployments on their first valid run",
   "type": "task",
-  "updated_at": "2026-10-14T12:54:18Z"
+  "updated_at": "2026-10-14T14:32:07Z"
 }
