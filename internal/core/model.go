@@ -77,6 +77,10 @@ type Run struct {
 	// The git ref the run ran from, e.g. refs/heads/main, from the job's OIDC
 	// identity when the run is first created. Older runs have none.
 	Ref string `json:"ref,omitempty"`
+	// The pipeline the run used and its version, from the job's OIDC identity
+	// when the run is first created. Missing for a caller workflow that calls no
+	// reusable workflow, and for older runs.
+	Pipeline *Pipeline `json:"pipeline,omitempty"`
 	// GitHub logins, from GitHub when the run is first seen. Older runs have none.
 	Actor           string    `json:"actor,omitempty"`
 	TriggeringActor string    `json:"triggering_actor,omitempty"`
@@ -114,6 +118,11 @@ type Identity struct {
 	Ref        string
 	RunID      int64
 	RunAttempt int64
+	// The OIDC job_workflow_ref and job_workflow_sha claims: the workflow the
+	// job ran, which is a pipeline when the caller workflow calls a reusable
+	// workflow. Recorded on the run (see PipelineOf); never used for identity.
+	JobWorkflowRef string
+	JobWorkflowSHA string
 }
 
 type WorkflowRun struct {

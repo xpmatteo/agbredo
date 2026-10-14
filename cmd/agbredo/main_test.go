@@ -37,6 +37,9 @@ func (s *registrationService) SaveDeployment(_ context.Context, a core.Deploymen
 func (s *registrationService) Deployment(context.Context, string) (core.Deployment, error) {
 	return s.registered, nil
 }
+func (s *registrationService) RecentRuns(context.Context, string, int) ([]core.Run, error) {
+	return nil, nil
+}
 
 // Exercise a browser's ordinary form submission through the real security,
 // session, CSRF, template and registration handlers. HTTP test clients cannot

@@ -69,11 +69,11 @@ For people. A browser session is needed: GitHub OAuth, then a signed cookie. A u
 | `GET /` | Overview: active runs, failures, estimated consumption, recent runs |
 | `GET /agents` | List deployments, and the form to add one by hand |
 | `POST /agents` | Add a deployment by hand, before its first run. Optional: the first run creates it anyway. `400` if its repository + workflow file already has one |
-| `GET /agents/{id}` | One deployment, and its form |
+| `GET /agents/{id}` | One deployment: the pipeline versions its last 20 runs used, and its form |
 | `POST /agents/{id}` | Save a deployment. Refused if the revision is old, or with `400` if another deployment has its repository + workflow file |
 | `POST /agents/{id}/delete` | Hide a deployment. Its runs stay |
 | `GET /runs` | All runs |
-| `GET /runs/{id}` | One run: totals, ref, Claude Code steps, event timeline |
+| `GET /runs/{id}` | One run: totals, ref, pipeline and version, Claude Code steps, event timeline |
 | `GET /static/style.css` | The stylesheet |
 
 ## Sign-in
