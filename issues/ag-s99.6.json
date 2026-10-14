@@ -4,6 +4,7 @@
   "blocks": [
     "ag-s99.3"
   ],
+  "closed_at": "2026-10-14T12:57:00Z",
   "created": "2026-10-14T12:22:58Z",
   "description": "Code-only rename to match docs/00-glossary.md. No design talk needed.\n\ncore.Agent (internal/core/model.go) holds what the glossary calls a Deployment: owner, repository, workflow file, ref, App installation, threshold. Rename the Go type and related names (Run.Agent, Event.AgentID, Event.AgentVersion, store and web functions) to Deployment.\n\ncore.Agent.Version is an edit counter used to detect conflicting edits. It is not the glossary's Version. Rename the Go field to Revision.\n\nKeep for backwards compatibility: JSON keys (json:\"agent\", \"agent_id\", \"version\", \"agent_version\"), the agents table name, URLs (/agents/..., /api/agents/{id}/...), the AGBREDO_AGENT_ID variable, and OTLP labels like agbredo.agent.id (docs/10-design.md lists them). Deployed workflows and stored rows depend on these.\n\nDashboard wording: the run page shows the edit counter as \"Agent version\" and events as \"Agent {id} v{n}\" (internal/web/templates.html). Change these so they do not say \"version\", e.g. \"Registration revision\". Pages that list agents should say deployments.\n\nCheck: go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./...",
   "id": "ag-s99.6",
@@ -16,8 +17,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Rename core.Agent to Deployment in Go code",
   "type": "task",
-  "updated_at": "2026-10-14T12:55:25Z"
+  "updated_at": "2026-10-14T12:57:00Z"
 }
