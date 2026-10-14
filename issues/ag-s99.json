@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T12:22:42Z",
+  "description": "docs/glossary.md fixes the domain words. Bring code, schema and dashboard in line. Items marked DESIGN TALK change the trust model, schema or what the server stores: talk with Matt before starting.",
+  "id": "ag-s99",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Align code and data with the glossary",
+  "type": "epic",
+  "updated_at": "2026-10-14T12:22:42Z"
+}
