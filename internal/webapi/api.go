@@ -8,10 +8,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"agbredo/internal/core"
+	"agbredo/internal/forward"
 	gh "agbredo/internal/github"
 )
 
@@ -23,13 +25,16 @@ type API struct {
 	Verifier      Verifier
 	WebhookSecret string
 	Logger        *slog.Logger
+	// Forward sends accepted telemetry on to a store. Nil sends nothing.
+	Forward *forward.Forwarder
 }
 
 func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents/{id}/observations", a.report)
 	mux.HandleFunc("POST /api/agents/{id}/otlp-token", a.mintToken)
-	mux.HandleFunc("POST /v1/metrics", a.otlp((*core.Service).IngestMetrics))
-	mux.HandleFunc("POST /v1/logs", a.otlp((*core.Service).IngestLogs))
+	mux.HandleFunc("POST /v1/metrics", a.otlp("metrics", (*core.Service).IngestMetrics))
+	mux.HandleFunc("POST /v1/logs", a.otlp("logs", (*core.Service).IngestLogs))
+	mux.HandleFunc("POST /v1/traces", a.otlp("traces", (*core.Service).IngestTraces))
 	mux.HandleFunc("POST /api/github/webhook", a.webhook)
 }
 
@@ -50,14 +55,15 @@ func (a *API) mintToken(w http.ResponseWriter, r *http.Request) {
 		a.failure(w, err)
 		return
 	}
-	write(w, map[string]any{"token": token, "expires_at": expires})
+	write(w, map[string]any{"token": token, "expires_at": expires, "traceparent": core.TraceParent(r.PathValue("id"), identity)})
 }
 
 const maxOTLPBody = 4 << 20
 
 // otlp receives OpenTelemetry JSON from Claude Code. The token identifies the
-// run and the step; nothing in the payload is trusted for that.
-func (a *API) otlp(ingest func(*core.Service, context.Context, string, []byte) error) http.HandlerFunc {
+// run and the step; nothing in the payload is trusted for that. Accepted
+// telemetry is forwarded, labelled with that run and step.
+func (a *API) otlp(signal string, ingest func(*core.Service, context.Context, string, []byte) (core.TelemetryOrigin, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		header := r.Header.Get("Authorization")
 		token := strings.TrimPrefix(header, "Bearer ")
@@ -84,12 +90,38 @@ func (a *API) otlp(ingest func(*core.Service, context.Context, string, []byte) e
 			http.Error(w, "Telemetry exceeds 4 MiB", 413)
 			return
 		}
-		if err = ingest(a.Service, r.Context(), token, body); err != nil {
+		origin, err := ingest(a.Service, r.Context(), token, body)
+		if err != nil {
 			a.failure(w, err)
 			return
 		}
+		a.Forward.Send(signal, body, labels(origin))
 		write(w, struct{}{})
 	}
+}
+
+// labels say where telemetry came from. Empty values are left out.
+func labels(o core.TelemetryOrigin) map[string]string {
+	r := o.Run
+	all := map[string]string{
+		"agbredo.agent.id":        r.Agent.ID,
+		"agbredo.agent.name":      r.Agent.Name,
+		"agbredo.run.id":          r.ID,
+		"agbredo.source":          o.Source,
+		"github.repository":       r.Agent.Owner + "/" + r.Agent.Repository,
+		"github.workflow":         r.Agent.Workflow,
+		"github.run_id":           strconv.FormatInt(r.GitHubRunID, 10),
+		"github.run_attempt":      strconv.FormatInt(r.RunAttempt, 10),
+		"github.run_url":          r.GitHubURL,
+		"github.actor":            r.Actor,
+		"github.triggering_actor": r.TriggeringActor,
+	}
+	for k, v := range all {
+		if v == "" {
+			delete(all, k)
+		}
+	}
+	return all
 }
 func (a *API) report(w http.ResponseWriter, r *http.Request) {
 	identity, ok := a.identity(w, r)

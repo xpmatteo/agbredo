@@ -97,6 +97,8 @@ Webhooks plus polling (every 30 seconds) reconcile the state of runs that were r
 5. Update the GitHub App callback and webhook URLs to this domain; install the App on the agent repository.
 6. Deploy, sign in, register the example agent and run a few of its scenarios.
 
+Optional: to keep the full Claude Code telemetry for later analysis, run an OTLP store such as OpenObserve on Railway's private network. Set `OTLP_FORWARD_URL` to its OTLP base, without `/v1/...` (for example `http://openobserve:5080/api/default`), and `OTLP_AUTH_TOKEN` to the base64 of `user:password`. Agbredo then forwards the metrics, logs and traces it accepts. When `OTLP_FORWARD_URL` is unset, nothing is forwarded.
+
 Railway's `PORT` overrides `AGBREDO_PORT` (default `8080`); `DATABASE_URL` is also accepted when `AGBREDO_DATABASE_URL` is unset. The application listens on all interfaces, migrates the database on startup, logs JSON with `slog`, and shuts down gracefully on termination. The final Docker image runs as a non-root user and contains the compiled executable with embedded application assets; no Node pipeline is present.
 
 `GET /healthz` checks application liveness. `GET /readyz` checks database readiness. PostgreSQL is the sole persistent store; retain it and its backups across deployments. Run one application replica for this first milestone.

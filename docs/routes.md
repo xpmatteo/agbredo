@@ -10,7 +10,7 @@ All responses carry an `X-Request-ID` header. Errors from the runner routes are 
 | --- | --- | --- |
 | A person in a browser | Signed session cookie, GitHub user on the allowlist | Dashboard, `/auth/*` |
 | A workflow's job | GitHub OIDC token, audience = `AGBREDO_BASE_URL` | `/observations`, `/otlp-token` |
-| Claude Code in a job | Telemetry token from `/otlp-token` | `/v1/metrics`, `/v1/logs` |
+| Claude Code in a job | Telemetry token from `/otlp-token` | `/v1/metrics`, `/v1/logs`, `/v1/traces` |
 | GitHub | HMAC signature of the webhook secret | `/api/github/webhook` |
 | The platform | None | `/healthz`, `/readyz` |
 
@@ -33,16 +33,17 @@ A report from a job: a `started` or a `finished` report for one source. `Authori
 Gets a token for one Claude Code step to send its telemetry. `Authorization: Bearer <OIDC token>`. Checked like a report. Creates the run if it is new.
 
 - Body: `{"source": "review"}`. The source is 1 to 80 letters, digits, dots, underscores or hyphens. Use a different source for each Claude Code step.
-- `200` with `{"token": "agb_...", "expires_at": "..."}`. The token lasts 6 hours, or until the run finishes. It belongs to one run attempt and one source. Only its hash is stored.
+- `200` with `{"token": "agb_...", "expires_at": "...", "traceparent": "00-...-...-01"}`. The `traceparent` has the same trace ID for every step of a run attempt. The token lasts 6 hours, or until the run finishes. It belongs to one run attempt and one source. Only its hash is stored.
 - Errors: `401` bad identity, `400` bad source, `403` the job does not match the agent, `404` unknown agent, `409` the run has already finished.
 
-### `POST /v1/metrics` and `POST /v1/logs`
+### `POST /v1/metrics`, `POST /v1/logs` and `POST /v1/traces`
 
 OpenTelemetry from Claude Code. `Authorization: Bearer agb_...`, the token from `/otlp-token`. Claude Code adds these paths to `OTEL_EXPORTER_OTLP_ENDPOINT` itself.
 
 - `Content-Type: application/json` (set `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`). Protobuf is not accepted. `Content-Encoding: gzip` is accepted. Up to 4 MiB, after decompression.
 - The token says which run and which source the data belongs to. Nothing in the payload is trusted for that.
-- Metrics: the server reads `claude_code.token.usage` and `claude_code.cost.usage`, delta or cumulative. Logs: it counts `api_error` events, and rate-limit errors among them. Everything else is dropped when the request is read. A repeated export is counted once.
+- Metrics: the server reads `claude_code.token.usage` and `claude_code.cost.usage`, delta or cumulative. Logs: it counts `api_error` events, and rate-limit errors among them. Traces: nothing is counted. A repeated export is counted once.
+- If `OTLP_FORWARD_URL` is set, the accepted payload is forwarded to the telemetry store with the run's labels added (see `design.md`). Otherwise the rest is dropped.
 - `200` with `{}`.
 - Errors: `401` no token, or not an `agb_` token, `415` not JSON, `400` bad gzip or JSON, `413` too large, `403` unknown or expired token, or the run has finished.
 

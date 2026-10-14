@@ -61,8 +61,11 @@ type Run struct {
 	OverBudget             bool         `json:"over_budget"`
 	GitHubRunID            int64        `json:"github_run_id"`
 	GitHubURL              string       `json:"github_url"`
-	CreatedAt              time.Time    `json:"created_at"`
-	UpdatedAt              time.Time    `json:"updated_at"`
+	// GitHub logins, from GitHub when the run is first seen. Older runs have none.
+	Actor           string    `json:"actor,omitempty"`
+	TriggeringActor string    `json:"triggering_actor,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 	// Per Claude Code step, from telemetry sent straight to Agbredo. The totals above include these.
 	Sources map[string]*SourceUsage `json:"sources,omitempty"`
 }
@@ -107,6 +110,9 @@ type WorkflowRun struct {
 	Conclusion string
 	Workflow   string
 	Ref        string
+	// GitHub logins: who started the run, and who started this attempt.
+	Actor           string
+	TriggeringActor string
 }
 
 type Backend interface {

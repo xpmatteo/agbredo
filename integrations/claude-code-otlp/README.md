@@ -24,7 +24,7 @@ The Claude step stays as it was. The action only sets environment variables for 
 
 ## What it does
 
-It asks Agbredo for a token with the job's GitHub identity, masks it in the logs, and writes these to `GITHUB_ENV`: `CLAUDE_CODE_ENABLE_TELEMETRY`, the `OTEL_*` exporter settings for `http/json` and the token header, `OTEL_METRICS_INCLUDE_VERSION=true` (so the Claude Code version is reported), and the `OTEL_LOG_*` settings that keep prompts, answers and tool details out of the export.
+It asks Agbredo for a token with the job's GitHub identity, masks it in the logs, and writes these to `GITHUB_ENV`: `CLAUDE_CODE_ENABLE_TELEMETRY`, the `OTEL_*` exporter settings for `http/json` and the token header, `OTEL_METRICS_INCLUDE_VERSION=true` (so the Claude Code version is reported), `OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true` (so the Claude account is recorded), traces (`OTEL_TRACES_EXPORTER=otlp` and the beta switch `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1`), `TRACEPARENT` (so every Claude Code step of the run is in one trace), and the `OTEL_LOG_*` settings that keep prompts, answers and tool details out of the export.
 
 If anything fails, it prints a warning, turns telemetry off for the next step, and succeeds. The agent is never stopped by reporting.
 

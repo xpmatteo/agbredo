@@ -176,7 +176,7 @@ func TestMintTokenRequiresRunnerIdentity(t *testing.T) {
 
 func TestOTLPRoutesCheckTokenAndFormatBeforeService(t *testing.T) {
 	json := map[string]string{"Authorization": "Bearer agb_x", "Content-Type": "application/json"}
-	for _, path := range []string{"/v1/metrics", "/v1/logs"} {
+	for _, path := range []string{"/v1/metrics", "/v1/logs", "/v1/traces"} {
 		for name, c := range map[string]struct {
 			headers map[string]string
 			body    string
@@ -194,6 +194,23 @@ func TestOTLPRoutesCheckTokenAndFormatBeforeService(t *testing.T) {
 			if w.Code != c.want {
 				t.Errorf("%s %s: status %d, want %d", path, name, w.Code, c.want)
 			}
+		}
+	}
+}
+
+func TestTelemetryLabelsComeFromTheRun(t *testing.T) {
+	run := core.Run{ID: "run1", GitHubRunID: 777, RunAttempt: 2, GitHubURL: "https://github.com/o/r/actions/runs/777", Actor: "starter",
+		Agent: core.Agent{ID: "agent", Name: "Reviewer", Owner: "o", Repository: "r", Workflow: "review.yml"}}
+	got := labels(core.TelemetryOrigin{Run: run, Source: "review"})
+	want := map[string]string{"agbredo.agent.id": "agent", "agbredo.agent.name": "Reviewer", "agbredo.run.id": "run1", "agbredo.source": "review",
+		"github.repository": "o/r", "github.workflow": "review.yml", "github.run_id": "777", "github.run_attempt": "2",
+		"github.run_url": "https://github.com/o/r/actions/runs/777", "github.actor": "starter"}
+	if len(got) != len(want) {
+		t.Fatalf("labels %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q, want %q", k, got[k], v)
 		}
 	}
 }

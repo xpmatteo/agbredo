@@ -37,21 +37,26 @@ runs:
         token=$(jq -r .token <<<"$reply")
         [[ "$token" =~ ^agb_[0-9a-f]+$ ]] || skip "unexpected reply from Agbredo"
         echo "::add-mask::$token"
+        # Puts every Claude Code step of this run attempt in one trace.
+        traceparent=$(jq -r '.traceparent // empty' <<<"$reply")
+        [[ "$traceparent" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || traceparent=""
 
         {
           echo "CLAUDE_CODE_ENABLE_TELEMETRY=1"
           echo "OTEL_METRICS_EXPORTER=otlp"
           echo "OTEL_LOGS_EXPORTER=otlp"
-          echo "OTEL_TRACES_EXPORTER=none"
+          echo "OTEL_TRACES_EXPORTER=otlp"
+          echo "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1"
           echo "OTEL_EXPORTER_OTLP_PROTOCOL=http/json"
           echo "OTEL_EXPORTER_OTLP_ENDPOINT=$url"
           echo "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer $token"
           echo "OTEL_METRICS_INCLUDE_VERSION=true"
-          echo "OTEL_METRICS_INCLUDE_ACCOUNT_UUID=false"
+          echo "OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true"
           echo "OTEL_METRIC_EXPORT_INTERVAL=10000"
           echo "OTEL_LOG_USER_PROMPTS=0"
           echo "OTEL_LOG_ASSISTANT_RESPONSES=0"
           echo "OTEL_LOG_TOOL_DETAILS=0"
           echo "OTEL_LOG_TOOL_CONTENT=0"
           echo "OTEL_LOG_RAW_API_BODIES=0"
+          [ -z "$traceparent" ] || echo "TRACEPARENT=$traceparent"
         } >> "$GITHUB_ENV"

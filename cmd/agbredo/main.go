@@ -16,6 +16,7 @@ import (
 
 	"agbredo/internal/auth"
 	"agbredo/internal/core"
+	"agbredo/internal/forward"
 	"agbredo/internal/github"
 	"agbredo/internal/requestlog"
 	"agbredo/internal/store"
@@ -92,7 +93,10 @@ func run(logger *slog.Logger) error {
 	dashboard := http.NewServeMux()
 	web.New(service, login).Register(dashboard)
 	mux.Handle("/", login.RequireAdmin(dashboard))
-	(&webapi.API{Service: service, Verifier: auth.NewOIDC(baseURL), WebhookSecret: secret, Logger: logger}).Register(mux)
+	// Optional: forward accepted telemetry to an OTLP store such as OpenObserve.
+	// OTLP_FORWARD_URL is the OTLP base, e.g. http://openobserve:5080/api/default.
+	forwarder := forward.New(os.Getenv("OTLP_FORWARD_URL"), os.Getenv("OTLP_AUTH_TOKEN"), logger)
+	(&webapi.API{Service: service, Verifier: auth.NewOIDC(baseURL), WebhookSecret: secret, Logger: logger, Forward: forwarder}).Register(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte("ok\n"))
@@ -121,6 +125,8 @@ func run(logger *slog.Logger) error {
 	var workers sync.WaitGroup
 	workers.Add(1)
 	go func() { defer workers.Done(); service.Work(ctx, logger) }()
+	workers.Add(1)
+	go func() { defer workers.Done(); forwarder.Run(ctx) }()
 	serverErr := make(chan error, 1)
 	go func() { logger.Info("Agbredo listening", "address", server.Addr); serverErr <- server.ListenAndServe() }()
 	select {

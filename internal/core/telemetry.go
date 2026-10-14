@@ -74,9 +74,26 @@ func (s *Service) MintToken(ctx context.Context, agentID, source string, i Ident
 	return token, expires, tx.Commit(ctx)
 }
 
+// TraceParent is a W3C traceparent for one Claude Code step. The trace ID is
+// the first half of the run ID, so every step of a run attempt shares one
+// trace. The parent span ID is new each time.
+func TraceParent(agentID string, i Identity) string {
+	var span [8]byte
+	if _, err := rand.Read(span[:]); err != nil {
+		panic(err)
+	}
+	return "00-" + reportRunID(agentID, i.RunID, i.RunAttempt)[:32] + "-" + hex.EncodeToString(span[:]) + "-01"
+}
+
+// TelemetryOrigin is the run and Claude Code step a telemetry token belongs to.
+type TelemetryOrigin struct {
+	Run    Run
+	Source string
+}
+
 // IngestMetrics and IngestLogs take a body of OTLP JSON from a Claude Code step.
 // Telemetry for a finished run, or with an unknown or expired token, is refused.
-func (s *Service) IngestMetrics(ctx context.Context, token string, body []byte) error {
+func (s *Service) IngestMetrics(ctx context.Context, token string, body []byte) (TelemetryOrigin, error) {
 	return s.ingest(ctx, token, func(tx pgx.Tx, r *Run, source string) error {
 		samples, version, err := parseMetrics(body)
 		if err != nil {
@@ -85,7 +102,7 @@ func (s *Service) IngestMetrics(ctx context.Context, token string, body []byte) 
 		return applyMetrics(ctx, tx, r, source, samples, version)
 	})
 }
-func (s *Service) IngestLogs(ctx context.Context, token string, body []byte) error {
+func (s *Service) IngestLogs(ctx context.Context, token string, body []byte) (TelemetryOrigin, error) {
 	return s.ingest(ctx, token, func(tx pgx.Tx, r *Run, source string) error {
 		events, err := parseLogs(body)
 		if err != nil {
@@ -95,35 +112,42 @@ func (s *Service) IngestLogs(ctx context.Context, token string, body []byte) err
 	})
 }
 
-func (s *Service) ingest(ctx context.Context, token string, apply func(pgx.Tx, *Run, string) error) error {
+// IngestTraces only checks the token. Agbredo counts nothing from traces;
+// they are forwarded when a store is configured.
+func (s *Service) IngestTraces(ctx context.Context, token string, _ []byte) (TelemetryOrigin, error) {
+	return s.ingest(ctx, token, func(pgx.Tx, *Run, string) error { return nil })
+}
+
+func (s *Service) ingest(ctx context.Context, token string, apply func(pgx.Tx, *Run, string) error) (TelemetryOrigin, error) {
+	var origin TelemetryOrigin
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		return err
+		return origin, err
 	}
 	defer tx.Rollback(ctx)
 	var runID, source string
 	var expires time.Time
 	err = tx.QueryRow(ctx, "SELECT run_id,source,expires_at FROM run_tokens WHERE token_hash=$1", hashToken(token)).Scan(&runID, &source, &expires)
 	if err == pgx.ErrNoRows || (err == nil && !expires.After(now())) {
-		return ErrUnauthorized
+		return origin, ErrUnauthorized
 	}
 	if err != nil {
-		return err
+		return origin, err
 	}
 	r, err := readJSON[Run](ctx, tx, "SELECT document FROM runs WHERE id=$1 FOR UPDATE", runID)
 	if err != nil {
-		return err
+		return origin, err
 	}
 	if Terminal(r.Status) {
-		return ErrUnauthorized
+		return origin, ErrUnauthorized
 	}
 	if err = apply(tx, &r, source); err != nil {
-		return err
+		return origin, err
 	}
 	if err = saveRun(ctx, tx, r); err != nil {
-		return err
+		return origin, err
 	}
-	return tx.Commit(ctx)
+	return TelemetryOrigin{Run: r, Source: source}, tx.Commit(ctx)
 }
 
 // markSeen reports whether this export is new.

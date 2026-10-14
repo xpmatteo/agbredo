@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 	"time"
 )
@@ -38,6 +39,9 @@ func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+	if tp := TraceParent(a.ID, i); !regexp.MustCompile(`^00-[0-9a-f]{32}-[0-9a-f]{16}-01$`).MatchString(tp) || tp[3:35] != r.ID[:32] {
+		t.Errorf("traceparent %q does not follow the run %s", tp, r.ID)
+	}
 	if _, _, err = s.MintToken(ctx, a.ID, "bad source!", i); !errors.Is(err, ErrInvalid) {
 		t.Errorf("source: %v", err)
 	}
@@ -57,14 +61,14 @@ func TestIngestCountsEachExportOnceAndPerSource(t *testing.T) {
 		return metricsPayload("claude_code.token.usage", 1, "true", typeInput+`,{"key":"app.version","value":{"stringValue":"2.1.296"}}`, "1", end, `"asInt":"`+value+`"`)
 	}
 	for range 3 { // a retried export must count once
-		if err = s.IngestMetrics(ctx, review, delta("2", "100")); err != nil {
+		if _, err = s.IngestMetrics(ctx, review, delta("2", "100")); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err = s.IngestMetrics(ctx, review, delta("3", "5")); err != nil {
+	if _, err = s.IngestMetrics(ctx, review, delta("3", "5")); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.IngestMetrics(ctx, fix, delta("2", "7")); err != nil {
+	if _, err = s.IngestMetrics(ctx, fix, delta("2", "7")); err != nil {
 		t.Fatal(err)
 	}
 	// A cumulative cost counter: only the growth is added; an older or lower export is ignored.
@@ -72,14 +76,14 @@ func TestIngestCountsEachExportOnceAndPerSource(t *testing.T) {
 		return metricsPayload("claude_code.cost.usage", 2, "true", ``, "1", end, `"asDouble":`+value)
 	}
 	for _, p := range [][]byte{cost("10", "0.5"), cost("20", "0.75"), cost("15", "0.9"), cost("30", "0.1")} {
-		if err = s.IngestMetrics(ctx, review, p); err != nil {
+		if _, err = s.IngestMetrics(ctx, review, p); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err = s.IngestLogs(ctx, review, logsPayload(str("event.name", "api_error")+`,`+str("status_code", "429"))); err != nil {
+	if _, err = s.IngestLogs(ctx, review, logsPayload(str("event.name", "api_error")+`,`+str("status_code", "429"))); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.IngestLogs(ctx, review, logsPayload(str("event.name", "api_error")+`,`+str("status_code", "429"))); err != nil {
+	if _, err = s.IngestLogs(ctx, review, logsPayload(str("event.name", "api_error")+`,`+str("status_code", "429"))); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,17 +106,17 @@ func TestIngestCountsEachExportOnceAndPerSource(t *testing.T) {
 	}
 
 	// Unknown tokens are refused, and so is telemetry after GitHub says the run finished.
-	if err = s.IngestMetrics(ctx, "agb_unknown", delta("9", "1")); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.IngestMetrics(ctx, "agb_unknown", delta("9", "1")); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("unknown token accepted", err)
 	}
-	if err = s.IngestMetrics(ctx, review, []byte("nope")); !errors.Is(err, ErrInvalid) {
+	if _, err = s.IngestMetrics(ctx, review, []byte("nope")); !errors.Is(err, ErrInvalid) {
 		t.Fatal("invalid body not rejected", err)
 	}
 	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "completed", Conclusion: "success"})
 	if err = s.Webhook(ctx, "otlp-done", "acme/agent", 777); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.IngestMetrics(ctx, review, delta("9", "1")); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.IngestMetrics(ctx, review, delta("9", "1")); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("telemetry accepted after the run finished", err)
 	}
 	if _, _, err = s.MintToken(ctx, a.ID, "late", i); !errors.Is(err, ErrConflict) {
@@ -130,7 +134,27 @@ func TestExpiredTokenIsRefused(t *testing.T) {
 	if _, err = s.DB.Exec(ctx, "UPDATE run_tokens SET expires_at=now()-interval '1 second'"); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.IngestLogs(ctx, token, logsPayload(str("event.name", "api_error"))); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.IngestLogs(ctx, token, logsPayload(str("event.name", "api_error"))); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("expired token accepted", err)
+	}
+}
+
+func TestIngestTracesChecksTokenAndReturnsOrigin(t *testing.T) {
+	s, f, a, i := tokenAgent(t)
+	ctx := context.Background()
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "in_progress", Actor: "starter", TriggeringActor: "rerunner"})
+	token, _, err := s.MintToken(ctx, a.ID, "review", i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin, err := s.IngestTraces(ctx, token, []byte(`{"resourceSpans":[]}`))
+	if err != nil || origin.Source != "review" || origin.Run.Agent.ID != a.ID {
+		t.Fatalf("%#v %v", origin, err)
+	}
+	if origin.Run.Actor != "starter" || origin.Run.TriggeringActor != "rerunner" {
+		t.Fatalf("actors not stored: %q %q", origin.Run.Actor, origin.Run.TriggeringActor)
+	}
+	if _, err = s.IngestTraces(ctx, "agb_unknown", nil); !errors.Is(err, ErrUnauthorized) {
+		t.Fatal("unknown token accepted", err)
 	}
 }

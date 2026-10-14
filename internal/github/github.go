@@ -63,7 +63,7 @@ func convert(r *gh.WorkflowRun, workflow string) core.WorkflowRun {
 	if r.GetPath() != "" {
 		workflow = path.Base(strings.SplitN(r.GetPath(), "@", 2)[0])
 	}
-	return core.WorkflowRun{Attempt: int64(r.GetRunAttempt()), ID: r.GetID(), URL: r.GetHTMLURL(), Title: r.GetDisplayTitle(), Status: r.GetStatus(), Conclusion: r.GetConclusion(), Workflow: workflow, Ref: r.GetHeadBranch()}
+	return core.WorkflowRun{Attempt: int64(r.GetRunAttempt()), ID: r.GetID(), URL: r.GetHTMLURL(), Title: r.GetDisplayTitle(), Status: r.GetStatus(), Conclusion: r.GetConclusion(), Workflow: workflow, Ref: r.GetHeadBranch(), Actor: r.GetActor().GetLogin(), TriggeringActor: r.GetTriggeringActor().GetLogin()}
 }
 
 func (b *Backend) GetRun(ctx context.Context, a core.Agent, id int64) (core.WorkflowRun, error) {
