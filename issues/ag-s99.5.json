@@ -11,11 +11,15 @@
     {
       "text": "2026-10-14: recommended answers posted to Matt in the project thread; awaiting his decision before code.",
       "timestamp": "2026-10-14T14:32:07Z"
+    },
+    {
+      "text": "2026-10-14, Matt agreed: store trigger event (OIDC event_name) and ref (OIDC ref) on the run; per agent run store the list of models seen with tokens per model (from the model attribute on Claude Code token/cost metrics; verify at implementation). Effort: Matt says Claude Code reports it in the effort attribute of the claude_code.llm_request span (traces). Today the server counts nothing from traces (docs/10-design.md Telemetry flow step 4) and traces need CLAUDE_CODE_ENHANCED_TELEMETRY_BETA, so reading effort from spans is a change to what the server reads; missing traces = effort missing.",
+      "timestamp": "2026-10-14T14:57:18Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Record run configuration: trigger event, model, effort",
   "type": "task",
-  "updated_at": "2026-10-14T14:32:07Z"
+  "updated_at": "2026-10-14T14:57:18Z"
 }
