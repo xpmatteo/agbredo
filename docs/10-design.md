@@ -15,7 +15,7 @@ Agbredo shows what a fleet of existing GitHub Actions agents did and what they c
 
 1. An agent's workflow runs on its own trigger (schedule, push, manual).
 2. The reporter posts to `POST /api/agents/{id}/observations`.
-3. The server checks the OIDC token (issuer, signature, expiry, audience = `AGBREDO_BASE_URL`). It requires that the repository, workflow file and ref match the registered agent. It then asks GitHub for that run attempt, using the GitHub App, and requires that it matches.
+3. The server checks the OIDC token (issuer, signature, expiry, audience = `AGBREDO_BASE_URL`). It requires that the repository, workflow file and ref match the registered deployment. It then asks GitHub for that run attempt, using the GitHub App, and requires that it matches.
 4. The first valid report creates the run. Each report adds one event. Repeated reports are ignored, so totals are not counted twice.
 5. GitHub `workflow_run` webhooks and the poll set the run's status from GitHub (running, completed, failed, cancelled). A finished state is never reopened.
 
@@ -49,6 +49,7 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 
 - **Dashboard:** GitHub OAuth login, an allowlist of GitHub users (`AGBREDO_ADMIN_USERS`), signed session cookie, CSRF token on every form.
 - **Runners:** only the short-lived OIDC token. No shared secret.
+- **Reusable workflows:** accepted. A caller workflow in the target repository may call a pipeline (a reusable workflow) in any central repository. There is no list of allowed central repositories. Trust rests on GitHub. The OIDC token, signed by GitHub, says which repository and caller workflow ran. The server then checks the run with GitHub through the GitHub App, so only registered deployments, in repositories where the App is installed, can report. The identity is always the caller workflow, taken from the `workflow_ref` claim. The pipeline's `job_workflow_ref` claim is never used to decide who is reporting.
 - **Webhooks:** HMAC signature with the App's webhook secret.
 - **Telemetry tokens:** random, per run attempt and per source, 6 hours at most, refused once the run has finished. The agent's own process can read its token. With it, it can only send telemetry for its own run.
 - **Claude credentials:** never seen by the server. A report is a fixed list of fields (counts, exit code, version). It carries no prompts, output or environment. Telemetry arrives as raw OTLP over HTTPS. The server keeps only the fields listed above in PostgreSQL, and forwards the rest to the telemetry store if one is set. The telemetry step turns off prompt, response and tool logging. It turns on the Claude account fields (`user.account_uuid`, along with `user.email` and `organization.id` which Claude Code always sends), so the store records which Claude account did the work.
@@ -58,7 +59,8 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 
 - Costs are estimates of API use. The real subscription charge and the remaining quota are unknown.
 - The threshold only marks a run. It cannot stop an agent.
-- Only jobs written directly in the registered workflow file can report. Reusable workflows are rejected.
+- A run is matched by its caller workflow only. Agbredo does not yet record or check which pipeline or pipeline version a run used.
+- Any code that the caller workflow runs with `id-token: write` (the pipeline, or any workflow or action it calls) can get a token and report as that registered deployment.
 - Telemetry is accepted only as OTLP JSON (`OTEL_EXPORTER_OTLP_PROTOCOL=http/json`), not protobuf.
 - Telemetry sent after GitHub marks the run finished is refused. Claude Code sends its last export when it exits, which is before the run finishes. A job that is killed before that loses the last part of its usage.
 - Forwarding is best effort. Telemetry dropped while the store is down is not sent again. A repeated export is forwarded again, though it is counted once in PostgreSQL.

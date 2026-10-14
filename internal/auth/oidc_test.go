@@ -79,7 +79,10 @@ func TestOIDCAuthenticatesOnlyBoundShortLivedWorkflowTokens(t *testing.T) {
 		{"invalid run", func(c jwt.MapClaims) { c["run_id"] = "0" }},
 		{"invalid attempt", func(c jwt.MapClaims) { c["run_attempt"] = "0" }},
 		{"missing replay identity", func(c jwt.MapClaims) { delete(c, "jti") }},
-		{"reusable workflow", func(c jwt.MapClaims) { c["job_workflow_ref"] = "other/r/.github/workflows/agent.yml@refs/heads/main" }},
+		{"caller workflow outside repository", func(c jwt.MapClaims) {
+			c["workflow_ref"] = "org/agbredo-agents/.github/workflows/triage.yml@refs/heads/main"
+			c["job_workflow_ref"] = "o/r/.github/workflows/agent.yml@refs/heads/main"
+		}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -89,6 +92,39 @@ func TestOIDCAuthenticatesOnlyBoundShortLivedWorkflowTokens(t *testing.T) {
 				t.Fatal("untrusted token accepted")
 			}
 		})
+	}
+	// A reusable workflow: the caller workflow in o/r calls a pipeline in a
+	// central repository. The token is accepted, and the identity comes from
+	// workflow_ref (the caller), never from job_workflow_ref (the pipeline).
+	reusable := valid()
+	reusable["job_workflow_ref"] = "org/agbredo-agents/.github/workflows/triage.yml@refs/tags/v1"
+	identity, err = o.Verify(context.Background(), sign(reusable, "key1", jwt.SigningMethodRS256))
+	if err != nil {
+		t.Fatalf("reusable workflow rejected: %v", err)
+	}
+	if identity.Repository != "o/r" || identity.Workflow != "agent.yml" || identity.Ref != "refs/heads/main" {
+		t.Fatalf("identity must come from workflow_ref, got %#v", identity)
+	}
+	// A direct job: job_workflow_ref equals workflow_ref, as in real tokens.
+	direct := valid()
+	direct["job_workflow_ref"] = direct["workflow_ref"]
+	identity, err = o.Verify(context.Background(), sign(direct, "key1", jwt.SigningMethodRS256))
+	if err != nil {
+		t.Fatalf("direct job rejected: %v", err)
+	}
+	if identity.Repository != "o/r" || identity.Workflow != "agent.yml" || identity.Ref != "refs/heads/main" {
+		t.Fatalf("direct job identity mismatch %#v", identity)
+	}
+	// A reusable workflow in the same repository: the identity is still the caller.
+	sameRepo := valid()
+	sameRepo["workflow_ref"] = "o/r/.github/workflows/other.yml@refs/heads/main"
+	sameRepo["job_workflow_ref"] = "o/r/.github/workflows/agent.yml@refs/heads/main"
+	identity, err = o.Verify(context.Background(), sign(sameRepo, "key1", jwt.SigningMethodRS256))
+	if err != nil {
+		t.Fatalf("same-repository reusable workflow rejected: %v", err)
+	}
+	if identity.Repository != "o/r" || identity.Workflow != "other.yml" || identity.Ref != "refs/heads/main" {
+		t.Fatalf("identity must come from workflow_ref, got %#v", identity)
 	}
 	for _, raw := range []string{sign(valid(), "unknown", jwt.SigningMethodRS256), sign(valid(), "key1", jwt.SigningMethodHS256), strings.Repeat("x", 20000), "invalid"} {
 		if _, err := o.Verify(context.Background(), raw); err == nil {

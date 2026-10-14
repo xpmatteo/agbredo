@@ -31,8 +31,10 @@ type OIDC struct {
 }
 type runnerClaims struct {
 	jwt.RegisteredClaims
-	Repository     string `json:"repository"`
-	WorkflowRef    string `json:"workflow_ref"`
+	Repository  string `json:"repository"`
+	WorkflowRef string `json:"workflow_ref"`
+	// JobWorkflowRef names the pipeline (reusable workflow) that ran. It is parsed
+	// so the pipeline can be recorded later (ag-s99.2). Never use it for identity.
 	JobWorkflowRef string `json:"job_workflow_ref"`
 	Ref            string `json:"ref"`
 	RunID          string `json:"run_id"`
@@ -152,11 +154,9 @@ func (o *OIDC) Verify(ctx context.Context, raw string) (core.Identity, error) {
 	if workflow == "" || strings.ContainsAny(workflow, "/\\") || (!strings.HasSuffix(workflow, ".yml") && !strings.HasSuffix(workflow, ".yaml")) {
 		return fail()
 	}
-	// This milestone supports direct workflows only; reusable workflow identities
-	// require an explicit trust policy before they can receive action credentials.
-	if claims.JobWorkflowRef != "" && claims.JobWorkflowRef != claims.WorkflowRef {
-		return fail()
-	}
+	// Reusable workflows are accepted: job_workflow_ref may name a pipeline in
+	// any repository. The identity always comes from workflow_ref, the caller
+	// workflow in the target repository, never from job_workflow_ref.
 	runID, err := strconv.ParseInt(claims.RunID, 10, 64)
 	if err != nil || runID <= 0 {
 		return fail()
