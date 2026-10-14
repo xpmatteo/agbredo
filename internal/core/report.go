@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // ClaudeUsage keeps absent measurements distinct from a measured zero. Input
@@ -95,6 +97,51 @@ func verifyReport(a Agent, i Identity, gh WorkflowRun) error {
 	return nil
 }
 
+// lockRun finds the run for a verified GitHub run attempt, or creates it, and
+// locks it for the rest of the transaction. The first valid request creates it.
+func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, agentID string, i Identity) (Run, WorkflowRun, error) {
+	var gh WorkflowRun
+	id := reportRunID(agentID, i.RunID, i.RunAttempt)
+	r, err := readJSON[Run](ctx, tx, "SELECT document FROM runs WHERE id=$1", id)
+	if err != nil && err != ErrNotFound {
+		return r, gh, err
+	}
+	a := r.Agent
+	if err == ErrNotFound {
+		a, err = readJSON[Agent](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR SHARE", agentID)
+		if err != nil {
+			return r, gh, err
+		}
+		if !a.Enabled {
+			return r, gh, ErrUnauthorized
+		}
+	}
+	gh, err = s.Backend.GetRunAttempt(ctx, a, i.RunID, i.RunAttempt)
+	if err != nil {
+		return r, gh, err
+	}
+	if err = verifyReport(a, i, gh); err != nil {
+		return r, gh, err
+	}
+	if r.ID == "" {
+		r = Run{ID: id, CorrelationID: id, Agent: a, RunAttempt: i.RunAttempt, Status: "running", BudgetMicros: a.BudgetMicros, CreatedAt: now(), UpdatedAt: now()}
+		r.GitHubRunID = i.RunID
+		r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, i.RunID)
+		if _, err = tx.Exec(ctx, "INSERT INTO runs(id,agent_id,correlation_id,status,document) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING", id, a.ID, id, r.Status, mustJSON(r)); err != nil {
+			return r, gh, err
+		}
+	}
+	r, err = readJSON[Run](ctx, tx, "SELECT document FROM runs WHERE id=$1 FOR UPDATE", id)
+	if err != nil {
+		return r, gh, err
+	}
+	// A racing first report must also match the snapshot which won insertion.
+	if err = verifyReport(r.Agent, i, gh); err != nil {
+		return r, gh, err
+	}
+	return r, gh, nil
+}
+
 // Report binds independently triggered workflows using their signed GitHub
 // identity. It never dispatches a workflow or performs an action.
 func (s *Service) Report(ctx context.Context, agentID string, o Report, i Identity) (Run, bool, error) {
@@ -109,44 +156,11 @@ func (s *Service) Report(ctx context.Context, agentID string, o Report, i Identi
 		return Run{}, false, err
 	}
 	defer tx.Rollback(ctx)
-	id := reportRunID(agentID, i.RunID, i.RunAttempt)
-	r, err := readJSON[Run](ctx, tx, "SELECT document FROM runs WHERE id=$1", id)
-	if err != nil && err != ErrNotFound {
-		return r, false, err
-	}
-	a := r.Agent
-	if err == ErrNotFound {
-		a, err = readJSON[Agent](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR SHARE", agentID)
-		if err != nil {
-			return r, false, err
-		}
-		if !a.Enabled {
-			return r, false, ErrUnauthorized
-		}
-	}
-	gh, err := s.Backend.GetRunAttempt(ctx, a, i.RunID, i.RunAttempt)
+	r, gh, err := s.lockRun(ctx, tx, agentID, i)
 	if err != nil {
 		return r, false, err
 	}
-	if err = verifyReport(a, i, gh); err != nil {
-		return r, false, err
-	}
-	if r.ID == "" {
-		r = Run{ID: id, CorrelationID: id, Agent: a, RunAttempt: i.RunAttempt, Status: "running", BudgetMicros: a.BudgetMicros, CreatedAt: now(), UpdatedAt: now()}
-		r.GitHubRunID = i.RunID
-		r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, i.RunID)
-		if _, err = tx.Exec(ctx, "INSERT INTO runs(id,agent_id,correlation_id,status,document) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING", id, a.ID, id, r.Status, mustJSON(r)); err != nil {
-			return r, false, err
-		}
-	}
-	r, err = readJSON[Run](ctx, tx, "SELECT document FROM runs WHERE id=$1 FOR UPDATE", id)
-	if err != nil {
-		return r, false, err
-	}
-	// A racing first report must also match the snapshot which won insertion.
-	if err = verifyReport(r.Agent, i, gh); err != nil {
-		return r, false, err
-	}
+	id := r.ID
 	status := "running"
 	if o.Phase == "finished" {
 		status = "completed"

@@ -160,3 +160,40 @@ func TestWebhookDeliveryValidationAndLimits(t *testing.T) {
 		}
 	}
 }
+
+func TestMintTokenRequiresRunnerIdentity(t *testing.T) {
+	v := &fakeVerifier{}
+	w := requestAPI(testAPI(v), http.MethodPost, "/api/agents/agent/otlp-token", `{"source":"review"}`, nil)
+	if w.Code != http.StatusUnauthorized || v.calls != 0 {
+		t.Fatalf("status %d, verifier calls %d", w.Code, v.calls)
+	}
+	v = &fakeVerifier{err: core.ErrUnauthorized}
+	w = requestAPI(testAPI(v), http.MethodPost, "/api/agents/agent/otlp-token", `{"source":"review"}`, map[string]string{"Authorization": "Bearer expired"})
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expired identity accepted: %d", w.Code)
+	}
+}
+
+func TestOTLPRoutesCheckTokenAndFormatBeforeService(t *testing.T) {
+	json := map[string]string{"Authorization": "Bearer agb_x", "Content-Type": "application/json"}
+	for _, path := range []string{"/v1/metrics", "/v1/logs"} {
+		for name, c := range map[string]struct {
+			headers map[string]string
+			body    string
+			want    int
+		}{
+			"no token":         {map[string]string{"Content-Type": "application/json"}, `{}`, 401},
+			"oidc token":       {map[string]string{"Authorization": "Bearer eyJhbGciOi", "Content-Type": "application/json"}, `{}`, 401},
+			"overlong token":   {map[string]string{"Authorization": "Bearer agb_" + strings.Repeat("a", 100), "Content-Type": "application/json"}, `{}`, 401},
+			"protobuf":         {map[string]string{"Authorization": "Bearer agb_x", "Content-Type": "application/x-protobuf"}, `{}`, 415},
+			"bad gzip":         {map[string]string{"Authorization": "Bearer agb_x", "Content-Type": "application/json", "Content-Encoding": "gzip"}, `not gzip`, 400},
+			"declared too big": {json, strings.Repeat("a", maxOTLPBody+1), 413},
+		} {
+			// A nil service would panic if the request got past these checks.
+			w := requestAPI(testAPI(&fakeVerifier{}), http.MethodPost, path, c.body, c.headers)
+			if w.Code != c.want {
+				t.Errorf("%s %s: status %d, want %d", path, name, w.Code, c.want)
+			}
+		}
+	}
+}

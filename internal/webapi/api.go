@@ -1,6 +1,7 @@
 package webapi
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,7 +27,69 @@ type API struct {
 
 func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents/{id}/observations", a.report)
+	mux.HandleFunc("POST /api/agents/{id}/otlp-token", a.mintToken)
+	mux.HandleFunc("POST /v1/metrics", a.otlp((*core.Service).IngestMetrics))
+	mux.HandleFunc("POST /v1/logs", a.otlp((*core.Service).IngestLogs))
 	mux.HandleFunc("POST /api/github/webhook", a.webhook)
+}
+
+// mintToken gives a Claude Code step a token for sending its telemetry here.
+func (a *API) mintToken(w http.ResponseWriter, r *http.Request) {
+	identity, ok := a.identity(w, r)
+	if !ok {
+		return
+	}
+	var request struct {
+		Source string `json:"source"`
+	}
+	if !decode(w, r, &request) {
+		return
+	}
+	token, expires, err := a.Service.MintToken(r.Context(), r.PathValue("id"), request.Source, identity)
+	if err != nil {
+		a.failure(w, err)
+		return
+	}
+	write(w, map[string]any{"token": token, "expires_at": expires})
+}
+
+const maxOTLPBody = 4 << 20
+
+// otlp receives OpenTelemetry JSON from Claude Code. The token identifies the
+// run and the step; nothing in the payload is trusted for that.
+func (a *API) otlp(ingest func(*core.Service, context.Context, string, []byte) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		header := r.Header.Get("Authorization")
+		token := strings.TrimPrefix(header, "Bearer ")
+		if token == header || !strings.HasPrefix(token, "agb_") || len(token) > 100 {
+			http.Error(w, "Telemetry token required", 401)
+			return
+		}
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+			http.Error(w, "Send OTLP as JSON: set OTEL_EXPORTER_OTLP_PROTOCOL=http/json", 415)
+			return
+		}
+		var reader io.Reader = http.MaxBytesReader(w, r.Body, maxOTLPBody)
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			zr, err := gzip.NewReader(reader)
+			if err != nil {
+				http.Error(w, "Invalid gzip body", 400)
+				return
+			}
+			defer zr.Close()
+			reader = io.LimitReader(zr, maxOTLPBody+1)
+		}
+		body, err := io.ReadAll(reader)
+		if err != nil || len(body) > maxOTLPBody {
+			http.Error(w, "Telemetry exceeds 4 MiB", 413)
+			return
+		}
+		if err = ingest(a.Service, r.Context(), token, body); err != nil {
+			a.failure(w, err)
+			return
+		}
+		write(w, struct{}{})
+	}
 }
 func (a *API) report(w http.ResponseWriter, r *http.Request) {
 	identity, ok := a.identity(w, r)

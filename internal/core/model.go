@@ -63,6 +63,8 @@ type Run struct {
 	GitHubURL              string       `json:"github_url"`
 	CreatedAt              time.Time    `json:"created_at"`
 	UpdatedAt              time.Time    `json:"updated_at"`
+	// Per Claude Code step, from telemetry sent straight to Agbredo. The totals above include these.
+	Sources map[string]*SourceUsage `json:"sources,omitempty"`
 }
 
 // Costs are deltas, expressed as integer microdollars. A stable event ID makes retries safe.
