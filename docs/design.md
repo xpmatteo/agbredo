@@ -1,5 +1,7 @@
 # Design
 
+The routes are listed in `routes.md`.
+
 Agbredo shows what a fleet of existing GitHub Actions agents did and what they cost. It only receives reports. It does not start workflows, approve actions or write to GitHub.
 
 ## Parts
