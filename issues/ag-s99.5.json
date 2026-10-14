@@ -19,11 +19,15 @@
     {
       "text": "2026-10-14, Matt agreed: read effort from the claude_code.llm_request span (first value the server reads from traces); keep the effort levels seen per agent run; effort stays missing when no trace arrives. Update docs/10-design.md Telemetry flow step 4.",
       "timestamp": "2026-10-14T14:57:51Z"
+    },
+    {
+      "text": "2026-10-14 implementation: effort is read from the claude_code.llm_request span AND from the effort attribute on claude_code.token.usage / claude_code.cost.usage metrics, because current Claude Code docs list it on the metrics, not the span. Asked Matt whether to keep both (recommended) or span only. Branch claude/project-thread-yn74b3.",
+      "timestamp": "2026-10-14T15:59:33Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Record run configuration: trigger event, model, effort",
   "type": "task",
-  "updated_at": "2026-10-14T14:57:51Z"
+  "updated_at": "2026-10-14T15:59:33Z"
 }
