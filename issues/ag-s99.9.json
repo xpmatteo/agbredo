@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T12:23:00Z",
+  "description": "Glossary: an observation is anything that arrives about a run. Review core.Report and core.Event naming and docs/design.md wording.",
+  "id": "ag-s99.9",
+  "labels": [],
+  "parent": "ag-s99",
+  "priority": 2,
+  "status": "open",
+  "title": "Use Observation as the umbrella word for reports, telemetry and webhooks",
+  "type": "task",
+  "updated_at": "2026-10-14T12:23:00Z"
+}
