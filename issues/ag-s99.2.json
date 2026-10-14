@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "ag-s99.1"
+  ],
   "blocks": [],
   "created": "2026-10-14T12:22:56Z",
   "description": "DESIGN TALK (schema, stored data). Pipeline = job_workflow_ref path, Version = its git ref or SHA (job_workflow_sha). Read from the OIDC claims.",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Store pipeline and version on each run",
   "type": "task",
-  "updated_at": "2026-10-14T12:22:56Z"
+  "updated_at": "2026-10-14T12:23:06Z"
 }
