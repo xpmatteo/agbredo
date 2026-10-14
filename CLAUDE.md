@@ -43,6 +43,14 @@ Committing, closing issues, and syncing are part of completing a task — not se
 
 A ticket must hold the full context needed to resolve it. A fresh agent with only the repo and the ticket should be able to do the work. Write down the goal, the decisions made and why, where the code is, what to keep for backwards compatibility, how to check the work, and the open questions for Matt. Do not rely on the chat that created the ticket. When a decision changes, update the ticket.
 
+Any non-trivial work needs these two steps:
+
+1. Delegate to subagents. Give each subagent its own worktree and ticket. Choose the model size and effort to fit the task: a small model and low effort for simple, mechanical work; a large model and high effort for design, tricky bugs, or the trust model.
+2. Run a review workflow before landing:
+   - Review: a subagent that did not write the code reviews the change.
+   - Triage: sort each finding as fix now, new ticket, or no action, and say why.
+   - Remediation: fix the "fix now" findings, create tickets for the rest, and review again if the fixes were large.
+
 ## Where things live
 
 - `cmd/agbredo`: the server entry point.
