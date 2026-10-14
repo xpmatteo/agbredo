@@ -5,6 +5,7 @@
     "ag-s99.10",
     "ag-s99.2"
   ],
+  "closed_at": "2026-10-14T12:57:00Z",
   "created": "2026-10-14T12:22:56Z",
   "description": "Allow reusable workflows: a caller workflow in the target repo calls a pipeline (reusable workflow) in a central repo.\n\nWhy: Matt decided (2026-10-14) that we want reusable workflows. We trust any pipeline that reaches us, because GitHub's OIDC token and the GitHub App connection decide which repos can talk to Agbredo. No allowlist of central repos.\n\nToday: internal/auth/oidc.go:155-159 rejects a token whose job_workflow_ref differs from workflow_ref. internal/auth/oidc_test.go:82 (\"reusable workflow\" case) expects that rejection.\n\nWhat changes: remove that rejection. Keep every other check. workflow_ref still identifies the caller workflow, and that is what matches the registered deployment (repository + workflow file + ref today). With a reusable workflow, workflow_ref is the caller's file and job_workflow_ref is the pipeline's, e.g. org/agbredo-agents/.github/workflows/triage.yml@refs/tags/v1.\n\nTests: change the test case to expect acceptance, and add one that checks the identity still comes from workflow_ref, not job_workflow_ref. go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./... (DB tests need AGBREDO_TEST_DATABASE_URL).\n\nDocs: update the Trust section of docs/10-design.md.\n\nThis is a trust model change. Matt agreed in principle; show him the diff before merging.",
   "id": "ag-s99.1",
@@ -21,8 +22,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Allow reusable workflows in the OIDC check",
   "type": "task",
-  "updated_at": "2026-10-14T12:55:25Z"
+  "updated_at": "2026-10-14T12:57:00Z"
 }
