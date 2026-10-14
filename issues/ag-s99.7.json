@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Matteo Vaccari",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-10-14T12:22:59Z",
@@ -8,8 +8,8 @@
   "labels": [],
   "parent": "ag-s99",
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Rename source to agent run in code and dashboard",
   "type": "task",
-  "updated_at": "2026-10-14T12:34:19Z"
+  "updated_at": "2026-10-14T12:58:21Z"
 }
