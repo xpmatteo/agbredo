@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T12:22:57Z",
+  "description": "DESIGN TALK (trust model, stored data). No registration by hand. Decide how the App installation and threshold get set.",
+  "id": "ag-s99.4",
+  "labels": [],
+  "parent": "ag-s99",
+  "priority": 2,
+  "status": "open",
+  "title": "Create deployments on their first valid run",
+  "type": "task",
+  "updated_at": "2026-10-14T12:22:57Z"
+}
