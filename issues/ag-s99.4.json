@@ -17,11 +17,15 @@
     {
       "text": "2026-10-14: recommended answers posted to Matt in the project thread; awaiting his decision before code.",
       "timestamp": "2026-10-14T14:32:07Z"
+    },
+    {
+      "text": "2026-10-14, Matt agreed: new POST /api/otlp-token with no ID (old /api/agents/{id}/otlp-token keeps working); deployment found by repository + workflow from the OIDC token; installation ID looked up server-side as the GitHub App (GET /repos/{owner}/{repo}/installation, 404 = refuse), never taken from the runner; default threshold from an env var, editable on the deployment page; Enabled stays as a block switch; name defaults to repo + workflow file, description/owner empty and editable; the App installation becomes the only gate, documented in docs/10-design.md Trust. Reports are dropped (ag-s99.11), so no report route is needed.",
+      "timestamp": "2026-10-14T14:54:58Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Create deployments on their first valid run",
   "type": "task",
-  "updated_at": "2026-10-14T14:32:07Z"
+  "updated_at": "2026-10-14T14:54:58Z"
 }
