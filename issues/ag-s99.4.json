@@ -5,7 +5,7 @@
   ],
   "blocks": [],
   "created": "2026-10-14T12:22:57Z",
-  "description": "DESIGN TALK (trust model, stored data). No registration by hand. Decide how the App installation and threshold get set.",
+  "description": "DESIGN TALK (trust model, stored data). Needs ag-s99.3 first.\n\nGoal: no registration by hand. The first valid run from a new repository + workflow file creates the deployment. Matt decided this on 2026-10-14: trust rests on GitHub OIDC and the GitHub App connection, so registration adds nothing.\n\nToday: reports go to POST /api/agents/{id}/observations and tokens to POST /api/agents/{id}/otlp-token (docs/20-routes.md); the agent ID is in the URL and comes from the workflow's AGBREDO_AGENT_ID variable. The registration holds the GitHub App installation ID, which internal/github/github.go:70,90 uses to ask GitHub about the run, and the per-run threshold.\n\nQuestions for Matt:\n- New URL without an agent ID, keeping the old ones working? How are reports matched to a deployment then (repository + workflow file from the OIDC identity)?\n- Installation ID: look it up from the GitHub App (GET /repos/{owner}/{repo}/installation) on first run?\n- Default threshold for a new deployment, and where it is changed?\n- The \"Enabled\" switch: keep it as a way to stop accepting reports from a deployment?\n- How does the dashboard show a deployment that appeared on its own (name, description, owner)?",
   "id": "ag-s99.4",
   "labels": [],
   "parent": "ag-s99",
@@ -13,5 +13,5 @@
   "status": "open",
   "title": "Create deployments on their first valid run",
   "type": "task",
-  "updated_at": "2026-10-14T12:23:07Z"
+  "updated_at": "2026-10-14T12:34:19Z"
 }
