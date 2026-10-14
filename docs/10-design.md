@@ -1,6 +1,6 @@
 # Design
 
-The routes are listed in `02-routes.md`.
+The routes are listed in `20-routes.md`.
 
 Agbredo shows what a fleet of existing GitHub Actions agents did and what they cost.
 ## Parts

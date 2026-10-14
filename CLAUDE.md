@@ -1,6 +1,6 @@
 # Agbredo
 
-Go server and PostgreSQL. It receives reports from GitHub Actions agents and shows them on a dashboard. See `docs/01-design.md`.
+Go server and PostgreSQL. It receives reports from GitHub Actions agents and shows them on a dashboard. See `docs/10-design.md`.
 
 This application is deployed on Railway whenever we push. The public url is https://www.agbredo.com . 
 
@@ -48,7 +48,7 @@ Committing, closing issues, and syncing are part of completing a task — not se
 - `migrations/`: database migrations.
 - `integrations/`: pieces that run inside an agent's workflow.
 - `examples/`: sample agents.
-- `docs/`: `00-glossary.md` for the domain words, `01-design.md` for the design, `02-routes.md` for the routes. Read them in that order.
+- `docs/`: `00-glossary.md` for the domain words, `10-design.md` for the design, `20-routes.md` for the routes. Read them in that order.
 
 ## Commands
 
