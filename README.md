@@ -76,7 +76,7 @@ examples/hello-agent/agent.py            -> examples/hello-agent/agent.py
 examples/hello-agent/agbredo-example.yml -> .github/workflows/agbredo-example.yml
 ```
 
-Register an agent with workflow `agbredo-example.yml`, set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`, then run the workflow by hand and choose a scenario. Its job only needs `id-token: write` and `contents: read`. A fresh OIDC token is requested for each report with `AGBREDO_BASE_URL` as its audience. Agbredo verifies the issuer, signature, expiry, audience, repository, workflow file and configured reference, and then asks GitHub for the same run attempt. Direct jobs are supported; reusable workflows are rejected by the verifier.
+Register an agent with workflow `agbredo-example.yml`, set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`, then run the workflow by hand and choose a scenario. Its job only needs `id-token: write` and `contents: read`. A fresh OIDC token is requested for each report with `AGBREDO_BASE_URL` as its audience. Agbredo verifies the issuer, signature, expiry, audience, repository, workflow file and configured reference, and then asks GitHub for the same run attempt. Direct jobs and reusable workflows are both supported; the identity is always the caller workflow.
 
 The `otlp` scenario shows the telemetry path. It runs the `integrations/claude-code-otlp` action, then sends made-up Claude Code telemetry, including one repeated export that is counted once. Copy `integrations/claude-code-otlp` as well to use it.
 

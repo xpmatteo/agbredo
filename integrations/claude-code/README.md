@@ -103,7 +103,7 @@ The dashboard displays **Unavailable** for missing token or cost measurements. A
 
 Claude process status is separate from the workflow status. The workflow may continue with other steps, recover from errors or intentionally tolerate a failed command. GitHub webhooks and polling supply its authoritative conclusion. Signed OIDC identity is bound to the registered repository, workflow and ref, and GitHub's specific run attempt. A GitHub rerun gets a separate immutable run and accounting record. No correlation inputs or custom run names are required.
 
-Agbredo creates no dispatches or issues and has no endpoint that acts on GitHub. It discovers runs through reports, not by scanning every historical execution. If no report reaches Agbredo, that execution is not registered. Direct jobs are supported; externally called reusable workflows and pull-request OIDC identities remain excluded by the existing verifier. Scheduled, push, issue/comment and manual workflows on the registered ref can report.
+Agbredo creates no dispatches or issues and has no endpoint that acts on GitHub. It discovers runs through reports, not by scanning every historical execution. If no report reaches Agbredo, that execution is not registered. Direct jobs and reusable workflows are supported; the identity is always the caller workflow. Pull-request OIDC identities remain excluded by the verifier. Scheduled, push, issue/comment and manual workflows on the registered ref can report.
 
 ## Telemetry and failure handling
 

@@ -152,11 +152,9 @@ func (o *OIDC) Verify(ctx context.Context, raw string) (core.Identity, error) {
 	if workflow == "" || strings.ContainsAny(workflow, "/\\") || (!strings.HasSuffix(workflow, ".yml") && !strings.HasSuffix(workflow, ".yaml")) {
 		return fail()
 	}
-	// This milestone supports direct workflows only; reusable workflow identities
-	// require an explicit trust policy before they can receive action credentials.
-	if claims.JobWorkflowRef != "" && claims.JobWorkflowRef != claims.WorkflowRef {
-		return fail()
-	}
+	// Reusable workflows are accepted: job_workflow_ref may name a pipeline in
+	// any repository. The identity always comes from workflow_ref, the caller
+	// workflow in the target repository, never from job_workflow_ref.
 	runID, err := strconv.ParseInt(claims.RunID, 10, 64)
 	if err != nil || runID <= 0 {
 		return fail()
