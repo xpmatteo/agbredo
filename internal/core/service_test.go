@@ -33,7 +33,7 @@ func (f *fakeBackend) GetRunAttempt(ctx context.Context, a Deployment, id int64,
 func (f *fakeBackend) put(r WorkflowRun) { f.mu.Lock(); defer f.mu.Unlock(); f.workflows[r.ID] = r }
 
 func validDeployment() Deployment {
-	return Deployment{Name: "Example", Owner: "acme", Repository: "agent", Workflow: "agent.yml", Ref: "main", InstallationID: 123, BudgetMicros: 1_000_000, Enabled: true}
+	return Deployment{Name: "Example", Owner: "acme", Repository: "agent", Workflow: "agent.yml", Ref: "main", InstallationID: 123, ThresholdMicros: 1_000_000, Enabled: true}
 }
 func TestDeploymentValidation(t *testing.T) {
 	if err := ValidateDeployment(validDeployment()); err != nil {
@@ -44,7 +44,7 @@ func TestDeploymentValidation(t *testing.T) {
 		change func(*Deployment)
 	}{
 		{"empty name", func(a *Deployment) { a.Name = "" }}, {"owner path", func(a *Deployment) { a.Owner = "../acme" }}, {"workflow path", func(a *Deployment) { a.Workflow = "../x.yml" }},
-		{"invalid reference", func(a *Deployment) { a.Ref = "main;\n" }}, {"installation", func(a *Deployment) { a.InstallationID = 0 }}, {"negative budget", func(a *Deployment) { a.BudgetMicros = -1 }},
+		{"invalid reference", func(a *Deployment) { a.Ref = "main;\n" }}, {"installation", func(a *Deployment) { a.InstallationID = 0 }}, {"negative threshold", func(a *Deployment) { a.ThresholdMicros = -1 }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

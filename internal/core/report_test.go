@@ -34,7 +34,7 @@ func TestReportPreservesIndependentExecutionAndDeduplicatesConsumption(t *testin
 	if err != nil || !inserted {
 		t.Fatal(err)
 	}
-	if r.Status != "running" || !r.OverBudget || r.CostMicros != 1_000_001 || !r.EstimatedCostAvailable || r.ClaudeUsage == nil || *r.ClaudeUsage.CacheReadTokens != 200 {
+	if r.Status != "running" || !r.OverThreshold || r.CostMicros != 1_000_001 || !r.EstimatedCostAvailable || r.ClaudeUsage == nil || *r.ClaudeUsage.CacheReadTokens != 200 {
 		t.Fatalf("wrong totals/lifecycle: %#v", r)
 	}
 	var wg sync.WaitGroup

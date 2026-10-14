@@ -88,7 +88,7 @@ func TestManagedRoutesAreGone(t *testing.T) {
 	}
 }
 
-func TestBudgetDecimalConversion(t *testing.T) {
+func TestThresholdDecimalConversion(t *testing.T) {
 	for _, tc := range []struct {
 		value  string
 		micros int64
@@ -108,8 +108,8 @@ func TestBudgetDecimalConversion(t *testing.T) {
 func TestDeploymentFormExactCost(t *testing.T) {
 	s := &testService{}
 	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents", url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"example"}, "repository": {"example"}, "workflow": {"agent.yml"}, "ref": {"main"}, "installation_id": {"123"}, "budget": {"0.000003"}, "enabled": {"on"}})
-	if w.Code != http.StatusSeeOther || s.saved.BudgetMicros != 3 {
-		t.Fatalf("save status = %d, micros = %d", w.Code, s.saved.BudgetMicros)
+	if w.Code != http.StatusSeeOther || s.saved.ThresholdMicros != 3 {
+		t.Fatalf("save status = %d, micros = %d", w.Code, s.saved.ThresholdMicros)
 	}
 }
 

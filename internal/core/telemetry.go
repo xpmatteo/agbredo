@@ -210,7 +210,7 @@ func addUsage(r *Run, u *SourceUsage, field string, amount float64) {
 		*u.CostNanos += int64(math.Round(amount * 1e9))
 		r.CostMicros += u.CostMicros() - before
 		r.EstimatedCostAvailable = true
-		r.OverBudget = r.CostMicros > r.BudgetMicros
+		r.OverThreshold = r.CostMicros > r.ThresholdMicros
 		return
 	}
 	n := int64(math.Round(amount))
