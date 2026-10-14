@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T12:22:59Z",
+  "description": "BudgetMicros and OverBudget get threshold names in Go. Keep JSON keys for stored data.",
+  "id": "ag-s99.8",
+  "labels": [],
+  "parent": "ag-s99",
+  "priority": 2,
+  "status": "open",
+  "title": "Rename budget to threshold in code",
+  "type": "task",
+  "updated_at": "2026-10-14T12:22:59Z"
+}
