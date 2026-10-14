@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T15:39:57Z",
+  "description": "DESIGN TALK (trust model). From review of ag-s99.4 (2026-10-14). Since deployments are created by their first valid run, the GitHub App installation is the only gate. If the App is public (installable by anyone), any GitHub user can install it on their own repo, mint an OIDC token with Agbredo's audience, and create deployments and send telemetry. The README now requires the App to be installable 'Only on this account'. Option for defence in depth: compare the installation's account.login / account.id (already in the GET /repos/{owner}/{repo}/installation response, see internal/github/github.go Installation) with an allowlist env var such as AGBREDO_ALLOWED_OWNERS, refusing with 403 otherwise. Questions for Matt: is the production App private today? Is an allowlist wanted, and by login or by id? Check: go test ./... with AGBREDO_TEST_DATABASE_URL.",
+  "id": "ag-s99.13",
+  "labels": [],
+  "parent": "ag-s99",
+  "priority": 2,
+  "status": "open",
+  "title": "Restrict which GitHub accounts may create deployments",
+  "type": "task",
+  "updated_at": "2026-10-14T15:39:57Z"
+}
