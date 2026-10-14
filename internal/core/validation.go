@@ -1,8 +1,10 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,6 +38,38 @@ func ValidateDeployment(a Deployment) error {
 	}
 	return nil
 }
+
+// ParseUSD reads decimal dollars as integer microdollars, without
+// floating-point rounding. It is used for thresholds.
+func ParseUSD(raw string) (int64, error) {
+	bad := errors.New("Threshold must be a non-negative USD amount with at most six decimal places.")
+	raw = strings.TrimSpace(raw)
+	parts := strings.Split(raw, ".")
+	if len(parts) > 2 || parts[0] == "" {
+		return 0, bad
+	}
+	for _, part := range parts {
+		for _, c := range part {
+			if c < '0' || c > '9' {
+				return 0, bad
+			}
+		}
+	}
+	frac := ""
+	if len(parts) == 2 {
+		frac = parts[1]
+		if len(frac) > 6 || frac == "" {
+			return 0, bad
+		}
+	}
+	frac += strings.Repeat("0", 6-len(frac))
+	value, err := strconv.ParseInt(parts[0]+frac, 10, 64)
+	if err != nil {
+		return 0, bad
+	}
+	return value, nil
+}
+
 func Terminal(s string) bool { return s == "completed" || s == "failed" || s == "cancelled" }
 
 // Terminal states never regress.

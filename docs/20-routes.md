@@ -9,8 +9,8 @@ All responses carry an `X-Request-ID` header. Errors from the runner routes are 
 | Caller | Credential | Routes |
 | --- | --- | --- |
 | A person in a browser | Signed session cookie, GitHub user on the allowlist | Dashboard, `/auth/*` |
-| A workflow's job | GitHub OIDC token, audience = `AGBREDO_BASE_URL` | `/otlp-token` |
-| Claude Code in a job | Telemetry token from `/otlp-token` | `/v1/metrics`, `/v1/logs`, `/v1/traces` |
+| A workflow's job | GitHub OIDC token, audience = `AGBREDO_BASE_URL` | `/api/otlp-token`, `/api/agents/{id}/otlp-token` |
+| Claude Code in a job | Telemetry token from an `otlp-token` route | `/v1/metrics`, `/v1/logs`, `/v1/traces` |
 | GitHub | HMAC signature of the webhook secret | `/api/github/webhook` |
 | The platform | None | `/healthz`, `/readyz` |
 
@@ -18,14 +18,22 @@ All responses carry an `X-Request-ID` header. Errors from the runner routes are 
 
 These are kept stable. Deployed workflows call them. Do not rename them.
 
+### `POST /api/otlp-token`
+
+Gets a token for one Claude Code step to send its telemetry. `Authorization: Bearer <OIDC token>`. Creates the run if it is new, and the deployment if it is new.
+
+- The server checks the token (issuer, signature, expiry, audience). The deployment is the one with the token's repository and workflow file; owner and repository ignore case. If there is none, the server asks GitHub, as the App, for the App's installation on the repository, and creates the deployment (see `10-design.md`, Flow). Then it checks that GitHub has that run attempt. The ref is not checked; it is recorded on the run.
+- Body and `200` reply: as for `POST /api/agents/{id}/otlp-token` below.
+- Errors: `401` missing or bad token, `400` bad body or `source`, or a workflow file name Agbredo cannot keep, `403` the GitHub App is not installed on the repository, the deployment is disabled, or the job does not match GitHub's run, `404` the deployment was deleted while the request was handled (rare; the next request creates a new one), `409` the run has already finished, `500` GitHub or the database failed, for example GitHub did not answer the installation lookup. A refused or failed request creates nothing.
+
 ### `POST /api/agents/{id}/otlp-token`
 
-Gets a token for one Claude Code step to send its telemetry. `Authorization: Bearer <OIDC token>`. Creates the run if it is new.
+The same, for a named deployment. Workflows written before `POST /api/otlp-token` call it with their `agent-id`. It works as before and never creates a deployment. `Authorization: Bearer <OIDC token>`. Creates the run if it is new.
 
-- The server checks the token (issuer, signature, expiry, audience), that the repository and workflow file match the deployment, and that GitHub has that run attempt. The ref is not checked; it is recorded on the run.
+- The server checks the token (issuer, signature, expiry, audience), that the repository and workflow file match the deployment (owner and repository ignore case), and that GitHub has that run attempt. The ref is not checked; it is recorded on the run.
 - Body: `{"source": "review"}`, up to 64 KiB. Unknown fields are refused. The `source` is the name of the agent run. It is 1 to 80 letters, digits, dots, underscores or hyphens. Use a different name for each agent run.
 - `200` with `{"token": "agb_...", "expires_at": "...", "traceparent": "00-...-...-01"}`. The `traceparent` has the same trace ID for every step of a run attempt. The token lasts 6 hours, or until the run finishes. It belongs to one run attempt and one agent run. Only its hash is stored.
-- Errors: `401` missing or bad token, `400` bad body or `source`, `403` the job does not match the deployment, `404` unknown deployment, `409` the run has already finished.
+- Errors: `401` missing or bad token, `400` bad body or `source`, `403` the job does not match the deployment, or the deployment is disabled, `404` unknown deployment, `409` the run has already finished.
 
 ### `POST /api/agents/{id}/observations`
 
@@ -59,8 +67,8 @@ For people. A browser session is needed: GitHub OAuth, then a signed cookie. A u
 | Route | Does |
 | --- | --- |
 | `GET /` | Overview: active runs, failures, estimated consumption, recent runs |
-| `GET /agents` | List deployments, and the form to register one |
-| `POST /agents` | Register a deployment. `400` if its repository + workflow file is already registered |
+| `GET /agents` | List deployments, and the form to add one by hand |
+| `POST /agents` | Add a deployment by hand, before its first run. Optional: the first run creates it anyway. `400` if its repository + workflow file already has one |
 | `GET /agents/{id}` | One deployment, and its form |
 | `POST /agents/{id}` | Save a deployment. Refused if the revision is old, or with `400` if another deployment has its repository + workflow file |
 | `POST /agents/{id}/delete` | Hide a deployment. Its runs stay |

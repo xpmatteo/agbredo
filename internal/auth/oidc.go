@@ -116,7 +116,7 @@ func (o *OIDC) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 }
 
 // Verify returns signed runner identity only. The caller must bind this identity
-// to the registered repository and workflow file, and to the actual GitHub run.
+// to a deployment, by repository and workflow file, and to the actual GitHub run.
 // A runner can never use its OIDC identity as an administrator session.
 func (o *OIDC) Verify(ctx context.Context, raw string) (core.Identity, error) {
 	fail := func() (core.Identity, error) { return core.Identity{}, core.ErrUnauthorized }

@@ -40,6 +40,8 @@ The report route (`POST /api/agents/{id}/observations`) and its reporter (`integ
 
 Create a GitHub App dedicated to Agbredo. Set its homepage to your public Agbredo URL, its user authorization callback to `https://YOUR-HOST/auth/callback`, and its webhook URL to `https://YOUR-HOST/api/github/webhook`. Set a random webhook secret and enable the **Workflow run** webhook event. Enable user authorization for dashboard login; device flow and user access-token expiration settings are not required by this implementation.
 
+Set **Where can this GitHub App be installed?** to **Only on this account**. This is required. Deployments are created by their first run, so the App installation is the only gate on which repositories can send telemetry to Agbredo. A public App could be installed by any GitHub user, who could then create deployments and send telemetry.
+
 Request these repository permissions:
 
 | Permission | Access | Purpose |
@@ -49,9 +51,11 @@ Request these repository permissions:
 | Issues | Read and write | Not used today; kept in case Agbredo writes to GitHub again |
 | Metadata | Read | Required GitHub App repository metadata access |
 
-No organization or account permissions are needed. Install the App on only the intended agent repositories. Record the numeric installation ID from the installation settings URL (the number following `/installations/`). The installation ID is configured per agent; it is not a shared runner secret.
+No organization or account permissions are needed. Install the App on only the intended agent repositories: a repository with the App installed can send telemetry to Agbredo, and the first run of each of its workflows that asks for a token creates a deployment. Agbredo asks GitHub for the installation itself, as the App, when a deployment is created; runners never send it.
 
 Set `AGBREDO_GITHUB_APP_ID`, `AGBREDO_GITHUB_CLIENT_ID`, `AGBREDO_GITHUB_CLIENT_SECRET`, and `AGBREDO_GITHUB_WEBHOOK_SECRET` (at least 32 random characters). Generate a private key and supply either `AGBREDO_GITHUB_PRIVATE_KEY_FILE` locally or `AGBREDO_GITHUB_PRIVATE_KEY` with the complete PEM and real newlines on Railway. Keep private keys and client secrets out of source control. App installation access tokens are short-lived and managed by `ghinstallation`.
+
+`AGBREDO_DEFAULT_THRESHOLD_USD` (optional) is the per-run estimate threshold, in dollars, given to a deployment created by its first run, for example `2.50`. It is `5` when unset. Each deployment's threshold can then be changed on its page.
 
 Generate a session secret with `openssl rand -hex 32`, set `AGBREDO_SESSION_KEY`, and list administrator GitHub login names in `AGBREDO_ADMIN_USERS` separated by commas. Dashboard routes require GitHub OAuth login and an allowlisted user. Browser mutations use CSRF tokens. GitHub webhooks require a verified signature, and runner API requests require short-lived GitHub OIDC credentials.
 
@@ -63,7 +67,7 @@ HTTP requests log a request ID, method, path, status and duration as JSON. Form 
 
 ## Connect existing Claude Code agents
 
-Follow the [telemetry step setup](integrations/claude-code-otlp/README.md#use). Register the existing workflow in Agbredo. Add GitHub OIDC permission alongside existing job permissions and put the telemetry step before each Claude Code step. The Claude OAuth token stays in the existing Actions secret and runner environment. Do not add Claude credentials to the Go environment, database or workflow dispatch inputs.
+Follow the [telemetry step setup](integrations/claude-code-otlp/README.md#use). There is nothing to register in Agbredo: install the GitHub App on the repository, and the workflow's first run that asks for a token creates its deployment. Rename it, describe it, change its threshold or disable it on the dashboard. A disabled deployment gets no token for new runs. Add GitHub OIDC permission alongside existing job permissions and put the telemetry step before each Claude Code step. The Claude OAuth token stays in the existing Actions secret and runner environment. Do not add Claude credentials to the Go environment, database or workflow dispatch inputs.
 
 The estimate threshold flags estimated API consumption only. Agents continue running normally, and workflow completion comes from GitHub lifecycle events.
 
@@ -74,7 +78,7 @@ The estimate threshold flags estimated API consumption only. Agents continue run
 - `claude` (the default): a real Claude Code step that says hi. It needs the secret `CLAUDE_CODE_OAUTH_TOKEN`.
 - `otlp`: [`examples/fake-telemetry/send.py`](examples/fake-telemetry/send.py) pretends to be Claude Code. It calls no model and sends made-up telemetry, including one repeated export that Agbredo counts once.
 
-To use it in a repository where the App is installed, copy the workflow to `.github/workflows/agbredo-example.yml` and, for `otlp`, `examples/fake-telemetry/send.py` to the same path. In that repository the line `uses: ./integrations/claude-code-otlp` must become `uses: xpmatteo/agbredo/integrations/claude-code-otlp@main`, because the local path exists only in this repository. Register a deployment with workflow `agbredo-example.yml`, set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`, then run the workflow by hand. Its job only needs `id-token: write` and `contents: read`. The telemetry step requests an OIDC token with `AGBREDO_BASE_URL` as its audience. Runs from any branch or tag belong to the deployment. Agbredo verifies the issuer, signature, expiry, audience, repository and workflow file, and then asks GitHub for the same run attempt. Direct jobs and reusable workflows are both supported; the identity is always the caller workflow.
+To use it in a repository where the App is installed, copy the workflow to `.github/workflows/agbredo-example.yml` and, for `otlp`, `examples/fake-telemetry/send.py` to the same path. In that repository the line `uses: ./integrations/claude-code-otlp` must become `uses: xpmatteo/agbredo/integrations/claude-code-otlp@main`, because the local path exists only in this repository. Set the repository variable `AGBREDO_URL`, then run the workflow by hand. Its first run creates the deployment `owner/repository · agbredo-example.yml`. Its job only needs `id-token: write` and `contents: read`. The telemetry step requests an OIDC token with `AGBREDO_BASE_URL` as its audience. Runs from any branch or tag belong to the deployment. Agbredo verifies the issuer, signature, expiry, audience, repository and workflow file, and then asks GitHub for the same run attempt. Direct jobs and reusable workflows are both supported; the identity is always the caller workflow.
 
 Run `python3 examples/fake-telemetry/send.py` on your machine to see the payloads it would send.
 
@@ -91,7 +95,7 @@ Webhooks plus polling (every 30 seconds) reconcile the state of runs that Agbred
 3. Generate a public HTTPS domain for the application and set `AGBREDO_BASE_URL` to its exact origin, without a trailing slash.
 4. Set all App/OAuth/webhook credentials, `AGBREDO_GITHUB_PRIVATE_KEY` (multiline PEM), `AGBREDO_SESSION_KEY`, and `AGBREDO_ADMIN_USERS` as Railway variables. Omit the local private-key-file variable.
 5. Update the GitHub App callback and webhook URLs to this domain; install the App on the agent repository.
-6. Deploy, sign in, register the example agent and run it.
+6. Deploy, sign in, and run the example agent. Its first run creates its deployment.
 
 Optional: to keep the full Claude Code telemetry for later analysis, run an OTLP store such as OpenObserve on Railway's private network. Set `OTLP_FORWARD_URL` to its OTLP base, without `/v1/...` (for example `http://openobserve:5080/api/default`), and `OTLP_AUTH_TOKEN` to the base64 of `user:password`. Agbredo then forwards the metrics, logs and traces it accepts. When `OTLP_FORWARD_URL` is unset, nothing is forwarded.
 
@@ -115,4 +119,4 @@ AGBREDO_TEST_DATABASE_URL='postgres://agbredo:agbredo-local@localhost:5432/agbre
 
 Automated tests use external GitHub test doubles. Live GitHub Actions, App OAuth and Railway deployment require your credentials and repository configuration. To check a deployment, run the example workflow with each scenario and confirm the run page shows the expected status, agent run, estimates and events.
 
-The primary routes are `/`, `/agents`, `/agents/{id}`, `/runs` and `/runs/{id}`. Machine endpoints are `/api/agents/{id}/otlp-token` (telemetry tokens for runners), `/v1/metrics`, `/v1/logs` and `/v1/traces` (telemetry from Claude Code) and `/api/github/webhook`.
+The primary routes are `/`, `/agents`, `/agents/{id}`, `/runs` and `/runs/{id}`. Machine endpoints are `/api/otlp-token` and, for older workflows, `/api/agents/{id}/otlp-token` (telemetry tokens for runners), `/v1/metrics`, `/v1/logs` and `/v1/traces` (telemetry from Claude Code) and `/api/github/webhook`.

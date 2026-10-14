@@ -72,7 +72,7 @@ func (s *Service) Webhook(ctx context.Context, delivery, repository string, ghID
 		return err
 	}
 	for _, r := range known {
-		if repository != r.Deployment.Owner+"/"+r.Deployment.Repository {
+		if !sameRepository(repository, r.Deployment.Owner+"/"+r.Deployment.Repository) {
 			continue
 		}
 		gh, e := s.Backend.GetRun(ctx, r.Deployment, ghID)

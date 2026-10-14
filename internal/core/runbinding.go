@@ -5,13 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
 
 // A runner proves who it is with its GitHub OIDC identity. The code here binds
-// that identity to one run attempt of a registered deployment, and creates the
-// run on first use. Telemetry tokens are minted through it.
+// that identity to one run attempt of a deployment, and creates the run on
+// first use. Telemetry tokens are minted through it.
 
 // ClaudeUsage keeps absent measurements distinct from a measured zero. Input
 // excludes cache reads and cache writes, which Claude Code reports separately.
@@ -28,8 +29,13 @@ func attemptRunID(deployment string, run int64, attempt int64) string {
 	return hex.EncodeToString(h[:])
 }
 
+// sameRepository compares GitHub repository names ("owner/repository"). GitHub
+// ignores case in owner and repository names, and so does the unique index on
+// deployments (migrations/006_unique_deployment.sql).
+func sameRepository(a, b string) bool { return strings.EqualFold(a, b) }
+
 func verifyIdentity(a Deployment, i Identity, gh WorkflowRun) error {
-	if i.Repository != a.Owner+"/"+a.Repository || i.Workflow != a.Workflow || i.RunID <= 0 || i.RunAttempt <= 0 || gh.ID != i.RunID || gh.Attempt != i.RunAttempt || gh.Workflow != a.Workflow {
+	if !sameRepository(i.Repository, a.Owner+"/"+a.Repository) || i.Workflow != a.Workflow || i.RunID <= 0 || i.RunAttempt <= 0 || gh.ID != i.RunID || gh.Attempt != i.RunAttempt || gh.Workflow != a.Workflow {
 		return ErrUnauthorized
 	}
 	return nil

@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -48,7 +49,7 @@ func requestAPI(a *API, method, path, body string, headers map[string]string) *h
 
 func TestRunnerRoutesRejectUnauthenticatedRequestsBeforeService(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
-		{http.MethodPost, "/api/agents/agent/otlp-token"},
+		{http.MethodPost, "/api/agents/agent/otlp-token"}, {http.MethodPost, "/api/otlp-token"},
 	} {
 		for _, authorization := range []string{"", "Basic unrelated", "Bearer " + strings.Repeat("a", 16384)} {
 			v := &fakeVerifier{}
@@ -81,7 +82,7 @@ func TestRunnerIdentityUsesVerifiedClaims(t *testing.T) {
 }
 
 func TestAuthenticatedRunnerRejectsMalformedAndOversizedJSON(t *testing.T) {
-	for _, path := range []string{"/api/agents/agent/otlp-token"} {
+	for _, path := range []string{"/api/agents/agent/otlp-token", "/api/otlp-token"} {
 		for _, body := range []string{``, `{`, `[]`, `{"unknown_field":true}`, `{} {}`, `{} trailing`, `{"id":"` + strings.Repeat("a", 65536) + `"}`} {
 			v := &fakeVerifier{identity: core.Identity{Repository: "owner/repo", RunID: 1}}
 			w := requestAPI(testAPI(v), http.MethodPost, path, body, map[string]string{"Authorization": "Bearer valid-token", "Content-Type": "application/json"})
@@ -170,15 +171,32 @@ func TestTokenRequestKeepsSourceWireName(t *testing.T) {
 }
 
 func TestMintTokenRequiresRunnerIdentity(t *testing.T) {
-	v := &fakeVerifier{}
-	w := requestAPI(testAPI(v), http.MethodPost, "/api/agents/agent/otlp-token", `{"source":"review"}`, nil)
-	if w.Code != http.StatusUnauthorized || v.calls != 0 {
-		t.Fatalf("status %d, verifier calls %d", w.Code, v.calls)
+	for _, path := range []string{"/api/agents/agent/otlp-token", "/api/otlp-token"} {
+		v := &fakeVerifier{}
+		w := requestAPI(testAPI(v), http.MethodPost, path, `{"source":"review"}`, nil)
+		if w.Code != http.StatusUnauthorized || v.calls != 0 {
+			t.Fatalf("%s: status %d, verifier calls %d", path, w.Code, v.calls)
+		}
+		v = &fakeVerifier{err: core.ErrUnauthorized}
+		w = requestAPI(testAPI(v), http.MethodPost, path, `{"source":"review"}`, map[string]string{"Authorization": "Bearer expired"})
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("%s: expired identity accepted: %d", path, w.Code)
+		}
 	}
-	v = &fakeVerifier{err: core.ErrUnauthorized}
-	w = requestAPI(testAPI(v), http.MethodPost, "/api/agents/agent/otlp-token", `{"source":"review"}`, map[string]string{"Authorization": "Bearer expired"})
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expired identity accepted: %d", w.Code)
+}
+
+// A repository without the App is refused with 403, and says why.
+func TestNotInstalledIsForbidden(t *testing.T) {
+	w := httptest.NewRecorder()
+	testAPI(&fakeVerifier{}).failure(w, core.ErrNotInstalled)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "not installed") {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	// A GitHub failure is the server's problem, not a refusal.
+	w = httptest.NewRecorder()
+	testAPI(&fakeVerifier{}).failure(w, errors.New("find GitHub App installation: 502"))
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("GitHub failure answered %d", w.Code)
 	}
 }
 

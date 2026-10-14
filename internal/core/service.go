@@ -14,6 +14,9 @@ import (
 type Service struct {
 	DB      *pgxpool.Pool
 	Backend Backend
+	// DefaultThresholdMicros is the threshold of a deployment created by its
+	// first run (see MintTokenForWorkflow).
+	DefaultThresholdMicros int64
 }
 
 func (s *Service) Deployment(ctx context.Context, id string) (Deployment, error) {
@@ -47,7 +50,7 @@ func (s *Service) SaveDeployment(ctx context.Context, a Deployment) (Deployment,
 		_, err = tx.Exec(ctx, "UPDATE agents SET document=$2 WHERE id=$1", a.ID, mustJSON(a))
 	}
 	if isDuplicateDeployment(err) {
-		return a, invalid(fmt.Sprintf("a deployment of %s/%s with workflow %s is already registered", a.Owner, a.Repository, a.Workflow))
+		return a, invalid(fmt.Sprintf("a deployment of %s/%s with workflow %s already exists", a.Owner, a.Repository, a.Workflow))
 	}
 	if err != nil {
 		return a, err

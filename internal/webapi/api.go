@@ -31,6 +31,7 @@ type API struct {
 
 func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents/{id}/observations", reportRouteGone)
+	mux.HandleFunc("POST /api/otlp-token", a.mintTokenForWorkflow)
 	mux.HandleFunc("POST /api/agents/{id}/otlp-token", a.mintToken)
 	mux.HandleFunc("POST /v1/metrics", a.otlp("metrics", (*core.Service).IngestMetrics))
 	mux.HandleFunc("POST /v1/logs", a.otlp("logs", (*core.Service).IngestLogs))
@@ -44,7 +45,7 @@ func reportRouteGone(w http.ResponseWriter, _ *http.Request) {
 	http.Error(w, "The report route was removed; use integrations/claude-code-otlp", http.StatusGone)
 }
 
-// tokenRequest is the body of POST /api/agents/{id}/otlp-token.
+// tokenRequest is the body of POST /api/otlp-token and POST /api/agents/{id}/otlp-token.
 type tokenRequest struct {
 	// "source" is the wire name of the agent run; kept for deployed workflows.
 	AgentRun string `json:"source"`
@@ -66,6 +67,26 @@ func (a *API) mintToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, map[string]any{"token": token, "expires_at": expires, "traceparent": core.TraceParent(r.PathValue("id"), identity)})
+}
+
+// mintTokenForWorkflow is mintToken without a deployment ID in the URL. The
+// deployment is found by the repository + workflow file of the verified
+// identity, and created by its first valid request.
+func (a *API) mintTokenForWorkflow(w http.ResponseWriter, r *http.Request) {
+	identity, ok := a.identity(w, r)
+	if !ok {
+		return
+	}
+	var request tokenRequest
+	if !decode(w, r, &request) {
+		return
+	}
+	g, err := a.Service.MintTokenForWorkflow(r.Context(), request.AgentRun, identity)
+	if err != nil {
+		a.failure(w, err)
+		return
+	}
+	write(w, map[string]any{"token": g.Token, "expires_at": g.Expires, "traceparent": core.TraceParent(g.DeploymentID, identity)})
 }
 
 const maxOTLPBody = 4 << 20
@@ -169,6 +190,8 @@ func (a *API) failure(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, core.ErrInvalid):
 		http.Error(w, core.Redact(err.Error()), http.StatusBadRequest)
+	case errors.Is(err, core.ErrNotInstalled):
+		http.Error(w, "The Agbredo GitHub App is not installed on this repository", 403)
 	case errors.Is(err, core.ErrUnauthorized):
 		http.Error(w, "Runner is not authorized for this run or action", 403)
 	case errors.Is(err, core.ErrNotFound):

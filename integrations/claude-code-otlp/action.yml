@@ -5,8 +5,9 @@ inputs:
     description: Public Agbredo HTTPS origin, without a path
     required: true
   agent-id:
-    description: Registered agent ID
-    required: true
+    description: Optional, kept for older workflows. Without it, Agbredo finds the deployment by repository and workflow file, and creates it on its first run.
+    required: false
+    default: ""
   source:
     description: Name of the Claude Code step that follows. Unique in the workflow run; letters, digits, dots, underscores and hyphens.
     required: true
@@ -24,16 +25,26 @@ runs:
         skip() { echo "::warning::Agbredo telemetry is off: $1"; echo "CLAUDE_CODE_ENABLE_TELEMETRY=0" >> "$GITHUB_ENV"; exit 0; }
         url="${AGBREDO_URL%/}"
         [[ "$url" =~ ^https://[^/?#@]+$ ]] || skip "url must be an https origin"
-        [[ "$AGBREDO_AGENT_ID" =~ ^[A-Za-z0-9_.-]+$ ]] || skip "invalid agent id"
+        endpoint="$url/api/otlp-token"
+        if [ -n "$AGBREDO_AGENT_ID" ]; then
+          [[ "$AGBREDO_AGENT_ID" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]] || skip "invalid agent id"
+          endpoint="$url/api/agents/$AGBREDO_AGENT_ID/otlp-token"
+        fi
         [[ "$AGBREDO_SOURCE" =~ ^[A-Za-z0-9_.-]{1,80}$ ]] || skip "invalid source"
         [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || skip "the job needs 'id-token: write'"
 
         oidc=$(curl -fsS --max-time 10 -G -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
           --data-urlencode "audience=$url" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value) || skip "GitHub gave no identity token"
         echo "::add-mask::$oidc"
-        reply=$(jq -n --arg source "$AGBREDO_SOURCE" '{source: $source}' |
-          curl -fsS --max-time 20 --retry 2 -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" \
-            -d @- "$url/api/agents/$AGBREDO_AGENT_ID/otlp-token") || skip "Agbredo refused to give a token"
+        # No -f: on a refusal, the warning shows Agbredo's status and reason.
+        response=$(jq -n --arg source "$AGBREDO_SOURCE" '{source: $source}' |
+          curl -sS --max-time 20 --retry 2 -w '\n%{http_code}' -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" \
+            -d @- "$endpoint") || skip "could not reach Agbredo"
+        status="${response##*$'\n'}"
+        reply="${response%$'\n'*}"
+        if [ "$status" != 200 ]; then
+          skip "Agbredo refused to give a token: HTTP $status: $(printf '%s' "$reply" | tr -s '\r\n' '  ' | cut -c1-300)"
+        fi
         token=$(jq -r .token <<<"$reply")
         [[ "$token" =~ ^agb_[0-9a-f]+$ ]] || skip "unexpected reply from Agbredo"
         echo "::add-mask::$token"

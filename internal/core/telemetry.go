@@ -40,38 +40,64 @@ func hashToken(token string) string {
 // The token only identifies this run attempt and agent run; it is not an identity
 // for anything else. This also registers the run.
 func (s *Service) MintToken(ctx context.Context, deploymentID, agentRun string, i Identity) (string, time.Time, error) {
+	g, err := s.mint(ctx, agentRun, i, func(pgx.Tx) (string, error) { return deploymentID, nil })
+	return g.Token, g.Expires, err
+}
+
+// Grant is a telemetry token, and the deployment whose run it belongs to.
+type Grant struct {
+	DeploymentID string
+	Token        string
+	Expires      time.Time
+}
+
+func checkTokenRequest(agentRun string, i Identity) error {
 	if !slug.MatchString(agentRun) || len(agentRun) > 80 {
-		return "", time.Time{}, invalid("provide a stable agent run name")
+		return invalid("provide a stable agent run name")
 	}
 	if i.RunID <= 0 || i.RunAttempt <= 0 {
-		return "", time.Time{}, ErrUnauthorized
+		return ErrUnauthorized
+	}
+	return nil
+}
+
+// mint does the work of MintToken in one transaction. deployment gives the
+// deployment's ID inside that transaction; it may create the deployment, which
+// is then kept only if the token is given.
+func (s *Service) mint(ctx context.Context, agentRun string, i Identity, deployment func(pgx.Tx) (string, error)) (Grant, error) {
+	if err := checkTokenRequest(agentRun, i); err != nil {
+		return Grant{}, err
 	}
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		return "", time.Time{}, err
+		return Grant{}, err
 	}
 	defer tx.Rollback(ctx)
+	deploymentID, err := deployment(tx)
+	if err != nil {
+		return Grant{}, err
+	}
 	r, gh, err := s.lockRun(ctx, tx, deploymentID, i)
 	if err != nil {
-		return "", time.Time{}, err
+		return Grant{}, err
 	}
 	r.Status = statusFromGitHub(r.Status, gh)
 	if Terminal(r.Status) {
-		return "", time.Time{}, ErrConflict
+		return Grant{}, ErrConflict
 	}
 	var b [32]byte
 	if _, err = rand.Read(b[:]); err != nil {
-		return "", time.Time{}, err
+		return Grant{}, err
 	}
 	token := "agb_" + hex.EncodeToString(b[:])
 	expires := now().Add(TokenLifetime)
 	if _, err = tx.Exec(ctx, "INSERT INTO run_tokens(token_hash,run_id,source,expires_at) VALUES($1,$2,$3,$4)", hashToken(token), r.ID, agentRun, expires); err != nil {
-		return "", time.Time{}, err
+		return Grant{}, err
 	}
 	if err = saveRun(ctx, tx, r); err != nil {
-		return "", time.Time{}, err
+		return Grant{}, err
 	}
-	return token, expires, tx.Commit(ctx)
+	return Grant{DeploymentID: deploymentID, Token: token, Expires: expires}, tx.Commit(ctx)
 }
 
 // TraceParent is a W3C traceparent for one agent run. The trace ID is

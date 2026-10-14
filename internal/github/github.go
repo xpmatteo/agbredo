@@ -24,6 +24,15 @@ type Backend struct {
 	apps    *ghinstallation.AppsTransport
 	mu      sync.Mutex
 	clients map[int64]*gh.Client
+	// app authenticates as the GitHub App itself (a JWT), not as an
+	// installation. Tests replace it.
+	app *gh.Client
+	// notInstalled holds, per lower-case "owner/repository", until when a 404
+	// from the installation lookup is believed.
+	notInstalledMu sync.Mutex
+	notInstalled   map[string]time.Time
+	// now is the clock; tests replace it. Nil means time.Now.
+	now func() time.Time
 	// clientFor is used by tests without requesting real installation credentials.
 	clientFor func(int64) (*gh.Client, error)
 }
@@ -37,7 +46,66 @@ func New(appID int64, privateKey []byte) (*Backend, error) {
 		return nil, fmt.Errorf("configure GitHub App private key: %w", err)
 	}
 	apps.Client = &http.Client{Timeout: 20 * time.Second}
-	return &Backend{apps: apps, clients: make(map[int64]*gh.Client)}, nil
+	app := gh.NewClient(&http.Client{Transport: apps, Timeout: 30 * time.Second})
+	return &Backend{apps: apps, app: app, clients: make(map[int64]*gh.Client)}, nil
+}
+
+// notInstalledFor is how long a "not installed" answer is remembered, so that
+// runs in a repository without the App do not ask GitHub every time.
+const notInstalledFor = 5 * time.Minute
+
+// Installation asks GitHub, as the App, for the App's installation on a
+// repository (GET /repos/{owner}/{repo}/installation). A 404 means the App is
+// not installed there, and a suspended installation counts as not installed:
+// both are core.ErrNotInstalled. A 404 is remembered for notInstalledFor,
+// per repository, ignoring case.
+func (b *Backend) Installation(ctx context.Context, owner, repository string) (int64, error) {
+	key := strings.ToLower(owner + "/" + repository)
+	if b.recentlyNotInstalled(key) {
+		return 0, core.ErrNotInstalled
+	}
+	inst, resp, err := b.app.Apps.FindRepositoryInstallation(ctx, owner, repository)
+	if resp != nil && resp.StatusCode == http.StatusNotFound {
+		b.rememberNotInstalled(key)
+		return 0, core.ErrNotInstalled
+	}
+	if err != nil {
+		return 0, fmt.Errorf("find GitHub App installation: %w", err)
+	}
+	if inst.SuspendedAt != nil {
+		return 0, core.ErrNotInstalled
+	}
+	if inst.GetID() <= 0 {
+		return 0, errors.New("GitHub returned no installation ID")
+	}
+	return inst.GetID(), nil
+}
+
+func (b *Backend) clock() time.Time {
+	if b.now != nil {
+		return b.now()
+	}
+	return time.Now()
+}
+
+func (b *Backend) recentlyNotInstalled(key string) bool {
+	b.notInstalledMu.Lock()
+	defer b.notInstalledMu.Unlock()
+	until, ok := b.notInstalled[key]
+	if ok && !b.clock().Before(until) {
+		delete(b.notInstalled, key)
+		return false
+	}
+	return ok
+}
+
+func (b *Backend) rememberNotInstalled(key string) {
+	b.notInstalledMu.Lock()
+	defer b.notInstalledMu.Unlock()
+	if b.notInstalled == nil {
+		b.notInstalled = map[string]time.Time{}
+	}
+	b.notInstalled[key] = b.clock().Add(notInstalledFor)
 }
 
 func (b *Backend) client(id int64) (*gh.Client, error) {

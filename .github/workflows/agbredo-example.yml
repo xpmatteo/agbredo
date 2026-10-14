@@ -28,7 +28,6 @@ jobs:
         uses: ./integrations/claude-code-otlp
         with:
           url: ${{ vars.AGBREDO_URL }}
-          agent-id: ${{ vars.AGBREDO_AGENT_ID }}
           source: ${{ inputs.scenario == 'otlp' && 'pretend-claude' || 'claude-hi' }}
       # For "otlp" only: pretends to be Claude Code and sends made-up telemetry, including one repeated export.
       - name: Send made-up telemetry

@@ -95,14 +95,14 @@ func TestThresholdDecimalConversion(t *testing.T) {
 		value  string
 		micros int64
 	}{{"0", 0}, {"0.000001", 1}, {"12.345678", 12345678}, {"5.1", 5100000}, {"9223372036854.775807", 9223372036854775807}} {
-		got, err := parseMoney(tc.value)
+		got, err := core.ParseUSD(tc.value)
 		if err != nil || got != tc.micros {
-			t.Fatalf("parseMoney(%q) = %d, %v; want %d", tc.value, got, err, tc.micros)
+			t.Fatalf("core.ParseUSD(%q) = %d, %v; want %d", tc.value, got, err, tc.micros)
 		}
 	}
 	for _, value := range []string{"", "-1", "+1", "NaN", "1e6", ".5", "1.", "0.0000001", "9223372036854.775808", "1.1.1"} {
-		if _, err := parseMoney(value); err == nil {
-			t.Fatalf("parseMoney(%q) accepted invalid amount", value)
+		if _, err := core.ParseUSD(value); err == nil {
+			t.Fatalf("core.ParseUSD(%q) accepted invalid amount", value)
 		}
 	}
 }
@@ -125,10 +125,10 @@ func TestDeploymentFormHasNoRefAndRefusesDuplicates(t *testing.T) {
 			t.Fatalf("%s still shows a ref: %s", path, body)
 		}
 	}
-	s.saveErr = fmt.Errorf("a deployment of acme/agent with workflow agent.yml is already registered: %w", core.ErrInvalid)
+	s.saveErr = fmt.Errorf("a deployment of acme/agent with workflow agent.yml already exists: %w", core.ErrInvalid)
 	form := url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"acme"}, "repository": {"agent"}, "workflow": {"agent.yml"}, "installation_id": {"123"}, "budget": {"1"}, "enabled": {"on"}}
 	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents", form)
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "already registered") {
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "already exists") {
 		t.Fatalf("duplicate: status = %d, body = %s", w.Code, w.Body.String())
 	}
 }

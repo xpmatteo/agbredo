@@ -16,6 +16,25 @@ import (
 type fakeBackend struct {
 	mu        sync.Mutex
 	workflows map[int64]WorkflowRun
+	// installations maps "owner/repository", spelled as asked, to the App's installation.
+	installations map[string]int64
+	lookups       int
+	// installErr, if set, is what every installation lookup answers.
+	installErr error
+}
+
+func (f *fakeBackend) Installation(_ context.Context, owner, repository string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lookups++
+	if f.installErr != nil {
+		return 0, f.installErr
+	}
+	id, ok := f.installations[owner+"/"+repository]
+	if !ok {
+		return 0, ErrNotInstalled
+	}
+	return id, nil
 }
 
 func (f *fakeBackend) GetRun(_ context.Context, _ Deployment, id int64) (WorkflowRun, error) {
@@ -113,7 +132,7 @@ func testService(t *testing.T) (*Service, *fakeBackend) {
 	if err = store.Migrate(ctx, pool); err != nil {
 		t.Fatal("repeat migration", err)
 	}
-	fake := &fakeBackend{workflows: map[int64]WorkflowRun{}}
+	fake := &fakeBackend{workflows: map[int64]WorkflowRun{}, installations: map[string]int64{}}
 	return &Service{DB: pool, Backend: fake}, fake
 }
 
@@ -193,7 +212,7 @@ func TestDatabaseDeploymentIsUniquePerRepositoryAndWorkflow(t *testing.T) {
 		dup := validDeployment()
 		change(&dup)
 		dup.Name = "Duplicate"
-		if _, err = s.SaveDeployment(ctx, dup); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "already registered") {
+		if _, err = s.SaveDeployment(ctx, dup); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "already exists") {
 			t.Errorf("%s: duplicate accepted or wrong error: %v", name, err)
 		}
 	}
