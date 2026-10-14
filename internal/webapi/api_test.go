@@ -48,7 +48,7 @@ func requestAPI(a *API, method, path, body string, headers map[string]string) *h
 
 func TestRunnerRoutesRejectUnauthenticatedRequestsBeforeService(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
-		{http.MethodPost, "/api/agents/agent/observations"},
+		{http.MethodPost, "/api/agents/agent/otlp-token"},
 	} {
 		for _, authorization := range []string{"", "Basic unrelated", "Bearer " + strings.Repeat("a", 16384)} {
 			v := &fakeVerifier{}
@@ -71,7 +71,7 @@ func TestRunnerRoutesRejectUnauthenticatedRequestsBeforeService(t *testing.T) {
 func TestRunnerIdentityUsesVerifiedClaims(t *testing.T) {
 	expected := core.Identity{Repository: "owner/repo", Workflow: "owner/repo/.github/workflows/agent.yml@refs/heads/main", Ref: "refs/heads/main", RunID: 42, RunAttempt: 1}
 	v := &fakeVerifier{identity: expected}
-	r := httptest.NewRequest(http.MethodPost, "/api/agents/agent/observations", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/agents/agent/otlp-token", nil)
 	r.Header.Set("Authorization", "Bearer signed-token")
 	w := httptest.NewRecorder()
 	got, ok := testAPI(v).identity(w, r)
@@ -81,7 +81,7 @@ func TestRunnerIdentityUsesVerifiedClaims(t *testing.T) {
 }
 
 func TestAuthenticatedRunnerRejectsMalformedAndOversizedJSON(t *testing.T) {
-	for _, path := range []string{"/api/agents/agent/observations"} {
+	for _, path := range []string{"/api/agents/agent/otlp-token"} {
 		for _, body := range []string{``, `{`, `[]`, `{"unknown_field":true}`, `{} {}`, `{} trailing`, `{"id":"` + strings.Repeat("a", 65536) + `"}`} {
 			v := &fakeVerifier{identity: core.Identity{Repository: "owner/repo", RunID: 1}}
 			w := requestAPI(testAPI(v), http.MethodPost, path, body, map[string]string{"Authorization": "Bearer valid-token", "Content-Type": "application/json"})
@@ -94,26 +94,16 @@ func TestAuthenticatedRunnerRejectsMalformedAndOversizedJSON(t *testing.T) {
 
 func TestDecodeRequiresOneKnownJSONObject(t *testing.T) {
 	var event core.Event
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"id":"stable-event","cost_micros":3,"metadata":{"backend":"github"}}`))
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"id":"stable-event","agent_version":3,"metadata":{"backend":"github"}}`))
 	w := httptest.NewRecorder()
-	if !decode(w, r, &event) || event.ID != "stable-event" || event.CostMicros != 3 || string(event.Metadata) != `{"backend":"github"}` {
+	if !decode(w, r, &event) || event.ID != "stable-event" || event.DeploymentRevision != 3 || string(event.Metadata) != `{"backend":"github"}` {
 		t.Fatalf("valid extensible event not decoded: %+v", event)
 	}
-	for _, body := range []string{`{"cost_micros":0.1}`, `{"cost_micros":9223372036854775808}`, `{"timestamp":"invalid"}`, `{"proposal":{"unrecognized":true}}`, `{} null`} {
+	for _, body := range []string{`{"agent_version":0.1}`, `{"agent_version":9223372036854775808}`, `{"timestamp":"invalid"}`, `{"proposal":{"unrecognized":true}}`, `{} null`} {
 		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 		w := httptest.NewRecorder()
 		if decode(w, r, &core.Event{}) || w.Code != http.StatusBadRequest {
 			t.Fatalf("invalid typed payload was accepted: %s", body)
-		}
-	}
-}
-
-func TestReportPayloadRejectsOpaqueTelemetryAndCredentialFields(t *testing.T) {
-	for _, body := range []string{`{"CLAUDE_CODE_OAUTH_TOKEN":"sensitive"}`, `{"metadata":{"token":"sensitive"}}`, `{"usage":{"api_key":"sensitive"}}`, `{"exit_code":0.5}`, `{"estimated_cost_micros":-0.5}`} {
-		v := &fakeVerifier{identity: core.Identity{Repository: "owner/repo", RunID: 1}}
-		w := requestAPI(testAPI(v), http.MethodPost, "/api/agents/agent/observations", body, map[string]string{"Authorization": "Bearer valid-oidc"})
-		if w.Code != http.StatusBadRequest || strings.Contains(w.Body.String(), "sensitive") {
-			t.Fatalf("opaque input accepted or echoed: %d %s", w.Code, w.Body.String())
 		}
 	}
 }
@@ -158,6 +148,24 @@ func TestWebhookDeliveryValidationAndLimits(t *testing.T) {
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("invalid workflow payload accepted: status %d", w.Code)
 		}
+	}
+}
+
+// The former report route is gone; usage arrives as telemetry only.
+func TestReportRouteIsGone(t *testing.T) {
+	v := &fakeVerifier{}
+	w := requestAPI(testAPI(v), http.MethodPost, "/api/agents/agent/observations", `{}`, map[string]string{"Authorization": "Bearer signed-token"})
+	if w.Code != http.StatusGone || v.calls != 0 || !strings.Contains(w.Body.String(), "claude-code-otlp") {
+		t.Fatalf("status %d, verifier calls %d, body %q", w.Code, v.calls, w.Body.String())
+	}
+}
+
+// The agent run keeps its old wire name ("source") on purpose: deployed workflows send it.
+func TestTokenRequestKeepsSourceWireName(t *testing.T) {
+	var request tokenRequest
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"source":"review"}`))
+	if !decode(httptest.NewRecorder(), r, &request) || request.AgentRun != "review" {
+		t.Fatalf("decoded %+v", request)
 	}
 }
 

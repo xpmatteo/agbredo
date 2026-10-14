@@ -1,26 +1,22 @@
 package core
 
 import (
-	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
 )
 
-// The agent run keeps its old wire names ("source", "sources") on purpose.
+// The agent run keeps its old wire name ("sources") on purpose.
 func TestAgentRunWireNamesAreKept(t *testing.T) {
-	b, err := json.Marshal(Report{AgentRun: "x"})
-	if err != nil || !strings.Contains(string(b), `"source":"x"`) {
-		t.Errorf("report json: %s %v", b, err)
-	}
-	b, err = json.Marshal(Run{AgentRuns: map[string]*AgentRunUsage{"x": {}}})
+	b, err := json.Marshal(Run{AgentRuns: map[string]*AgentRunUsage{"x": {}}})
 	if err != nil || !strings.Contains(string(b), `"sources":`) {
 		t.Errorf("run json: %s %v", b, err)
 	}
-	var o Report
-	d := json.NewDecoder(bytes.NewReader([]byte(`{"source":"x"}`)))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&o); err != nil || o.AgentRun != "x" {
-		t.Errorf("decode: %+v %v", o, err)
+}
+
+// Run IDs of stored runs must not change: the ID still hashes the "observe:" prefix.
+func TestRunIDsStayStable(t *testing.T) {
+	if got := attemptRunID("agent", 777, 1); got != "74e0bd848e65945b5f45ee6ffe2a08ed4c5ecd064f813dc346ecb97ec4b05cee" {
+		t.Errorf("run ID changed: %s", got)
 	}
 }

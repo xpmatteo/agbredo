@@ -116,16 +116,41 @@ func testService(t *testing.T) (*Service, *fakeBackend) {
 	fake := &fakeBackend{workflows: map[int64]WorkflowRun{}}
 	return &Service{DB: pool, Backend: fake}, fake
 }
-func TestDatabaseDeploymentCRUDSnapshots(t *testing.T) {
-	s, f := testService(t)
-	ctx := context.Background()
-	a, i := reportDeployment(t, s, f)
-	r, _, err := s.Report(ctx, a.ID, finishedReport(), i)
+
+// registeredDeployment saves a deployment and a GitHub run attempt of it, and
+// returns the identity of a job in that attempt.
+func registeredDeployment(t *testing.T, s *Service, f *fakeBackend) (Deployment, Identity) {
+	t.Helper()
+	a := validDeployment()
+	a, err := s.SaveDeployment(context.Background(), a)
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Title: "Existing agent title", Workflow: a.Workflow, Ref: "main", Status: "in_progress"})
+	return a, Identity{Repository: "acme/agent", Workflow: a.Workflow, Ref: "refs/heads/main", RunID: 777, RunAttempt: 1, EventName: "schedule"}
+}
+
+// startRun registers the run of identity i the way a job does: by asking for a telemetry token.
+func startRun(t *testing.T, s *Service, deploymentID, agentRun string, i Identity) Run {
+	t.Helper()
+	ctx := context.Background()
+	if _, _, err := s.MintToken(ctx, deploymentID, agentRun, i); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.Run(ctx, attemptRunID(deploymentID, i.RunID, i.RunAttempt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestDatabaseDeploymentCRUDSnapshots(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	a, i := registeredDeployment(t, s, f)
+	r := startRun(t, s, a.ID, "agent", i)
 	a.Name = "Updated"
-	a, err = s.SaveDeployment(ctx, a)
+	a, err := s.SaveDeployment(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,11 +179,9 @@ func TestDatabaseDeploymentCRUDSnapshots(t *testing.T) {
 func TestDatabaseWebhookAndReconciliation(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
-	a, i := reportDeployment(t, s, f)
-	r, _, err := s.Report(ctx, a.ID, Report{GitHubRunID: 777, GitHubRunAttempt: 1, AgentRun: "job", Phase: "started", Version: "unknown"}, i)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, i := registeredDeployment(t, s, f)
+	r := startRun(t, s, a.ID, "job", i)
+	var err error
 	gh, _ := f.GetRun(ctx, a, 777)
 	gh.Status = "completed"
 	gh.Conclusion = "failure"
@@ -190,8 +213,71 @@ func TestDatabaseWebhookAndReconciliation(t *testing.T) {
 	}
 }
 
+// The first valid request for a run attempt creates its run, once, with a copy
+// of the deployment as it was. A rerun attempt is a run of its own.
+func TestDatabaseFirstRequestsKeepOneRunAndSnapshot(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	a, i := registeredDeployment(t, s, f)
+	var wg sync.WaitGroup
+	for n := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, _, err := s.MintToken(ctx, a.ID, fmt.Sprintf("step-%d", n), i); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	fleet, err := s.Fleet(ctx)
+	if err != nil || len(fleet.Runs) != 1 {
+		t.Fatalf("first requests raced: %#v %v", fleet, err)
+	}
+	a.Description = "Updated registration"
+	if a, err = s.SaveDeployment(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	r := startRun(t, s, a.ID, "next-step", i)
+	if r.Deployment.Revision != 1 || r.Deployment.Description != "" {
+		t.Fatalf("historical snapshot changed: %#v", r.Deployment)
+	}
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "completed", Conclusion: "success"})
+	if err = s.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if read, _ := s.Run(ctx, r.ID); read.Status != "completed" {
+		t.Fatal("poll did not finish the run", read.Status)
+	}
+	f.put(WorkflowRun{ID: 777, Attempt: 2, Workflow: a.Workflow, Ref: "main", Status: "in_progress"})
+	rerun := i
+	rerun.RunAttempt = 2
+	second := startRun(t, s, a.ID, "agent", rerun)
+	if second.ID == r.ID || second.RunAttempt != 2 || second.Deployment.Revision != 2 || second.Status != "running" {
+		t.Fatalf("rerun merged into prior attempt: %#v", second)
+	}
+}
+
+// Events stored by the former report route carry extra keys. They still load.
+func TestDatabaseOldReportEventsStillLoad(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	a, i := registeredDeployment(t, s, f)
+	r := startRun(t, s, a.ID, "agent", i)
+	old := `{"claude":{"github_run_id":777,"github_run_attempt":1,"source":"agent","phase":"finished","version":"2.1.296","exit_code":0,"duration_ms":5,"telemetry_supported":true,"telemetry_received":true,"api_errors":0,"api_failed":false,"rate_limit_failures":0},` +
+		`"id":"github:777:1:agent:finished","run_id":"` + r.ID + `","correlation_id":"` + r.ID + `","agent_id":"` + a.ID + `","agent_version":1,"timestamp":"2026-01-02T03:04:05Z",` +
+		`"type":"claude.execution","action":"","resource":"","status":"completed","duration_ms":5,"input_tokens":100,"output_tokens":10,"cost_micros":3,"message":"Claude Code execution report","error":""}`
+	if _, err := s.DB.Exec(ctx, "INSERT INTO events(run_id,id,document) VALUES($1,$2,$3)", r.ID, "github:777:1:agent:finished", old); err != nil {
+		t.Fatal(err)
+	}
+	events, err := s.Events(ctx, r.ID)
+	if err != nil || len(events) != 1 || events[0].Type != "claude.execution" || events[0].Status != "completed" {
+		t.Fatalf("old report event did not load: %#v %v", events, err)
+	}
+}
+
 func ExampleEvent() {
-	e := Event{ID: "stable-event-id", CostMicros: 125_000, InputTokens: 100}
-	fmt.Printf("%s: $%.6f, %d reported tokens", e.ID, float64(e.CostMicros)/1_000_000, e.InputTokens)
-	// Output: stable-event-id: $0.125000, 100 reported tokens
+	e := Event{ID: "system:github:777:1:completed:success", Type: "github.workflow_run", Status: "completed"}
+	fmt.Printf("%s %s: %s", e.Type, e.Status, e.ID)
+	// Output: github.workflow_run completed: system:github:777:1:completed:success
 }

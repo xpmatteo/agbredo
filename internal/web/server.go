@@ -56,14 +56,7 @@ type page struct {
 
 func New(service Service, auth Auth) *Server {
 	funcs := template.FuncMap{
-		"usd":      money,
-		"measured": measured,
-		"measuredCost": func(n *int64) string {
-			if n == nil {
-				return "Unavailable"
-			}
-			return "$" + money(*n)
-		},
+		"usd": money,
 		"runCost": func(r core.Run) string {
 			if !r.EstimatedCostAvailable {
 				return "Unavailable"

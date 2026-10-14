@@ -25,7 +25,7 @@ func (s *Service) Work(ctx context.Context, logger *slog.Logger) {
 	}
 }
 
-// ApplyLifecycle records a GitHub workflow state for a reported run. A nonempty
+// ApplyLifecycle records a GitHub workflow state for a run Agbredo knows. A nonempty
 // delivery ID makes webhook redelivery harmless.
 func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowRun, delivery string) error {
 	tx, err := s.DB.Begin(ctx)
@@ -49,7 +49,7 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 	if gh.ID != r.GitHubRunID || gh.Attempt != r.RunAttempt || gh.Workflow != r.Deployment.Workflow || !refMatches(r.Deployment.Ref, gh.Ref) {
 		return ErrUnauthorized
 	}
-	r.Status = reportedStatus(r.Status, gh)
+	r.Status = statusFromGitHub(r.Status, gh)
 	_, err = insertEvent(ctx, tx, Event{ID: fmt.Sprintf("system:github:%d:%d:%s:%s", gh.ID, gh.Attempt, gh.Status, gh.Conclusion), RunID: r.ID, CorrelationID: r.CorrelationID, DeploymentID: r.Deployment.ID, DeploymentRevision: r.Deployment.Revision, Timestamp: now(), Type: "github.workflow_run", Status: r.Status, Message: "GitHub workflow " + gh.Status + " " + gh.Conclusion})
 	if err != nil {
 		return err
@@ -60,18 +60,18 @@ func (s *Service) ApplyLifecycle(ctx context.Context, runID string, gh WorkflowR
 	return tx.Commit(ctx)
 }
 
-// Webhook updates only runs that were previously reported by their workflow.
+// Webhook updates only runs that Agbredo already knows: their workflow asked for a telemetry token.
 // Existing run names carry no Agbredo correlation.
 func (s *Service) Webhook(ctx context.Context, delivery, repository string, ghID int64) error {
 	rows, err := s.DB.Query(ctx, "SELECT document FROM runs WHERE document->>'github_run_id'=$1", fmt.Sprint(ghID))
 	if err != nil {
 		return err
 	}
-	reported, err := collect[Run](rows)
+	known, err := collect[Run](rows)
 	if err != nil {
 		return err
 	}
-	for _, r := range reported {
+	for _, r := range known {
 		if repository != r.Deployment.Owner+"/"+r.Deployment.Repository {
 			continue
 		}

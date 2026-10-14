@@ -30,12 +30,24 @@ type API struct {
 }
 
 func (a *API) Register(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/agents/{id}/observations", a.report)
+	mux.HandleFunc("POST /api/agents/{id}/observations", reportRouteGone)
 	mux.HandleFunc("POST /api/agents/{id}/otlp-token", a.mintToken)
 	mux.HandleFunc("POST /v1/metrics", a.otlp("metrics", (*core.Service).IngestMetrics))
 	mux.HandleFunc("POST /v1/logs", a.otlp("logs", (*core.Service).IngestLogs))
 	mux.HandleFunc("POST /v1/traces", a.otlp("traces", (*core.Service).IngestTraces))
 	mux.HandleFunc("POST /api/github/webhook", a.webhook)
+}
+
+// reportRouteGone answers workflows that still call the former report route.
+// Without it the dashboard's catch-all would answer 401, which misleads.
+func reportRouteGone(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "The report route was removed; use integrations/claude-code-otlp", http.StatusGone)
+}
+
+// tokenRequest is the body of POST /api/agents/{id}/otlp-token.
+type tokenRequest struct {
+	// "source" is the wire name of the agent run; kept for deployed workflows.
+	AgentRun string `json:"source"`
 }
 
 // mintToken gives an agent run a token for sending its telemetry here.
@@ -44,10 +56,7 @@ func (a *API) mintToken(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var request struct {
-		// "source" is the wire name of the agent run; kept for deployed workflows.
-		AgentRun string `json:"source"`
-	}
+	var request tokenRequest
 	if !decode(w, r, &request) {
 		return
 	}
@@ -123,22 +132,6 @@ func labels(o core.TelemetryOrigin) map[string]string {
 		}
 	}
 	return all
-}
-func (a *API) report(w http.ResponseWriter, r *http.Request) {
-	identity, ok := a.identity(w, r)
-	if !ok {
-		return
-	}
-	var o core.Report
-	if !decode(w, r, &o) {
-		return
-	}
-	run, accepted, err := a.Service.Report(r.Context(), r.PathValue("id"), o, identity)
-	if err != nil {
-		a.failure(w, err)
-		return
-	}
-	write(w, map[string]any{"run_id": run.ID, "accepted": accepted})
 }
 func (a *API) identity(w http.ResponseWriter, r *http.Request) (core.Identity, bool) {
 	header := r.Header.Get("Authorization")

@@ -9,7 +9,7 @@ All responses carry an `X-Request-ID` header. Errors from the runner routes are 
 | Caller | Credential | Routes |
 | --- | --- | --- |
 | A person in a browser | Signed session cookie, GitHub user on the allowlist | Dashboard, `/auth/*` |
-| A workflow's job | GitHub OIDC token, audience = `AGBREDO_BASE_URL` | `/observations`, `/otlp-token` |
+| A workflow's job | GitHub OIDC token, audience = `AGBREDO_BASE_URL` | `/otlp-token` |
 | Claude Code in a job | Telemetry token from `/otlp-token` | `/v1/metrics`, `/v1/logs`, `/v1/traces` |
 | GitHub | HMAC signature of the webhook secret | `/api/github/webhook` |
 | The platform | None | `/healthz`, `/readyz` |
@@ -18,23 +18,18 @@ All responses carry an `X-Request-ID` header. Errors from the runner routes are 
 
 These are kept stable. Deployed workflows call them. Do not rename them.
 
-### `POST /api/agents/{id}/observations`
-
-A report from a job: a `started` or a `finished` report for one agent run. `Authorization: Bearer <OIDC token>`.
-
-- Body: one JSON object, up to 64 KiB, with the fixed list of fields in `Report` (`internal/core/report.go`). Unknown fields are refused.
-- The server checks the token (issuer, signature, expiry, audience), that the repository, workflow file and ref match the deployment, and that GitHub has that run attempt.
-- The first valid report creates the run. A repeated report is ignored.
-- `200` with `{"run_id": "...", "accepted": true|false}`. `accepted` is false for a repeat.
-- Errors: `401` missing or bad token, `400` bad body, `403` the job does not match the deployment, `404` unknown deployment, `500`.
-
 ### `POST /api/agents/{id}/otlp-token`
 
-Gets a token for one Claude Code step to send its telemetry. `Authorization: Bearer <OIDC token>`. Checked like a report. Creates the run if it is new.
+Gets a token for one Claude Code step to send its telemetry. `Authorization: Bearer <OIDC token>`. Creates the run if it is new.
 
-- Body: `{"source": "review"}`. The `source` is the name of the agent run. It is 1 to 80 letters, digits, dots, underscores or hyphens. Use a different name for each agent run.
+- The server checks the token (issuer, signature, expiry, audience), that the repository, workflow file and ref match the deployment, and that GitHub has that run attempt.
+- Body: `{"source": "review"}`, up to 64 KiB. Unknown fields are refused. The `source` is the name of the agent run. It is 1 to 80 letters, digits, dots, underscores or hyphens. Use a different name for each agent run.
 - `200` with `{"token": "agb_...", "expires_at": "...", "traceparent": "00-...-...-01"}`. The `traceparent` has the same trace ID for every step of a run attempt. The token lasts 6 hours, or until the run finishes. It belongs to one run attempt and one agent run. Only its hash is stored.
-- Errors: `401` bad identity, `400` bad `source`, `403` the job does not match the deployment, `404` unknown deployment, `409` the run has already finished.
+- Errors: `401` missing or bad token, `400` bad body or `source`, `403` the job does not match the deployment, `404` unknown deployment, `409` the run has already finished.
+
+### `POST /api/agents/{id}/observations`
+
+The former report route. It is gone: it answers `410 Gone` with a plain-text note to use `integrations/claude-code-otlp`, before any check of the token or body.
 
 ### `POST /v1/metrics`, `POST /v1/logs` and `POST /v1/traces`
 

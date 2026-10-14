@@ -10,7 +10,7 @@ import (
 
 func tokenDeployment(t *testing.T) (*Service, *fakeBackend, Deployment, Identity) {
 	s, f := testService(t)
-	a, i := reportDeployment(t, s, f)
+	a, i := registeredDeployment(t, s, f)
 	return s, f, a, i
 }
 
@@ -21,9 +21,12 @@ func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
 	if err != nil || len(token) < 40 || time.Until(expires) < 5*time.Hour || time.Until(expires) > TokenLifetime {
 		t.Fatalf("%q %v %v", token, expires, err)
 	}
-	r, err := s.Run(ctx, reportRunID(a.ID, i.RunID, i.RunAttempt))
+	r, err := s.Run(ctx, attemptRunID(a.ID, i.RunID, i.RunAttempt))
 	if err != nil || r.Status != "running" {
 		t.Fatalf("run was not registered: %#v %v", r, err)
+	}
+	if r.ClaudeUsage != nil || r.EstimatedCostAvailable || r.AgentRuns != nil {
+		t.Fatalf("a new run must have no measurements yet, not zeros: %#v", r)
 	}
 	var stored int
 	if err = s.DB.QueryRow(ctx, "SELECT count(*) FROM run_tokens WHERE token_hash=$1 OR token_hash=$2", token, hashToken(token)).Scan(&stored); err != nil || stored != 1 {
@@ -55,7 +58,7 @@ func TestIngestCountsEachExportOnceAndPerAgentRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	fix, _, _ := s.MintToken(ctx, a.ID, "fix", i)
-	id := reportRunID(a.ID, i.RunID, i.RunAttempt)
+	id := attemptRunID(a.ID, i.RunID, i.RunAttempt)
 
 	delta := func(end, value string) []byte {
 		return metricsPayload("claude_code.token.usage", 1, "true", typeInput+`,{"key":"app.version","value":{"stringValue":"2.1.296"}}`, "1", end, `"asInt":"`+value+`"`)

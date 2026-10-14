@@ -2,11 +2,9 @@
 
 Agbredo is a Go control plane with PostgreSQL and server-rendered HTML. Existing agents execute Claude Code in GitHub Actions using their existing Claude Pro subscription and `CLAUDE_CODE_OAUTH_TOKEN` Actions secret. Agbredo observes execution status, available token usage, estimated API-equivalent consumption and rate-limit failures. The Go application never receives or stores Claude credentials and does not execute models.
 
-The [reusable reporting integration](integrations/claude-code/README.md) wraps the existing execution command with runner-local OpenTelemetry collection and GitHub OIDC reporting. Keep existing workflows, triggers, installation and authentication. No provider replacement, workflow renaming or dispatch inputs are required. Consumption estimates are not actual subscription charges; absent measurements remain unavailable. Claude Code **2.1.296** was verified locally; capability evidence and verification commands are included with the integration.
+Usage reaches Agbredo one way: [`integrations/claude-code-otlp`](integrations/claude-code-otlp/README.md), one small step before each Claude Code step, after which Claude Code sends its own telemetry to Agbredo. It shows usage per agent run. Keep existing workflows, triggers, installation and authentication. Run status comes from GitHub webhooks and polls. Consumption estimates are not actual subscription charges; absent measurements remain unavailable.
 
-The simpler way is [`integrations/claude-code-otlp`](integrations/claude-code-otlp/README.md): one small step before each Claude Code step, and Claude Code sends its own telemetry to Agbredo. It shows usage per step. The wrapper above keeps working.
-
-[`docs/10-design.md`](docs/10-design.md) describes the design in a page, and [`docs/20-routes.md`](docs/20-routes.md) lists every route. [`examples/hello-agent`](examples/hello-agent/) holds pretend agents that report without calling a model.
+[`docs/10-design.md`](docs/10-design.md) describes the design in a page, and [`docs/20-routes.md`](docs/20-routes.md) lists every route.
 
 ## Local development
 
@@ -34,7 +32,9 @@ Open `http://localhost:8080`. For actual workflow events and webhooks, expose th
 
 The repository currently has no Git remote. Its module path is temporarily `agbredo`. Once the actual repository URL exists, update `go.mod` and the internal `agbredo/...` imports to that repository path; no fictional module domain is used.
 
-Upgrading from an earlier version: migration `004_report_only.sql` runs on startup and drops the former approval and dispatch tables (`approvals`, `dispatch_jobs`). The `AGBREDO_APPROVAL_TTL` variable is no longer read. Reports from deployed workflows keep working, because the report URL (`/api/agents/{id}/observations`) and the stored run data are unchanged. Existing PostgreSQL volumes retain their database names and credentials; use those in `AGBREDO_DATABASE_URL` and keep the Compose PostgreSQL settings and health check aligned with that database.
+Upgrading from an earlier version: migration `004_report_only.sql` runs on startup and drops the former approval and dispatch tables (`approvals`, `dispatch_jobs`). The `AGBREDO_APPROVAL_TTL` variable is no longer read. Existing PostgreSQL volumes retain their database names and credentials; use those in `AGBREDO_DATABASE_URL` and keep the Compose PostgreSQL settings and health check aligned with that database.
+
+The report route (`POST /api/agents/{id}/observations`) and its reporter (`integrations/claude-code`) are gone; workflows that still call it get `410 Gone` with a short note to use the telemetry step. Use the telemetry step instead. Events stored by that route (type `claude.execution`) still load and show in the run's timeline as plain events. No migration removes them.
 
 ## Configure the GitHub App
 
@@ -63,30 +63,26 @@ HTTP requests log a request ID, method, path, status and duration as JSON. Form 
 
 ## Connect existing Claude Code agents
 
-Follow the [reporting integration setup](integrations/claude-code/README.md#minimal-workflow-change). Register the existing workflow in Agbredo. Add GitHub OIDC permission alongside existing job permissions and wrap only its execution step. The Claude OAuth token stays in the existing Actions secret and runner environment. Do not add Claude credentials to the Go environment, database, workflow dispatch inputs or reporting payload.
+Follow the [telemetry step setup](integrations/claude-code-otlp/README.md#use). Register the existing workflow in Agbredo. Add GitHub OIDC permission alongside existing job permissions and put the telemetry step before each Claude Code step. The Claude OAuth token stays in the existing Actions secret and runner environment. Do not add Claude credentials to the Go environment, database or workflow dispatch inputs.
 
 The estimate threshold flags estimated API consumption only. Agents continue running normally, and workflow completion comes from GitHub lifecycle events.
 
-## Try the example agents
+## Try the example agent
 
-`examples/hello-agent` holds pretend agents (`hello`, `play`, `rate-limited`, `spendthrift`, `silent`, `cancelled`). They call no model and send made-up numbers, so you can see every kind of run on the dashboard. Copy these files into a repository where the App is installed:
+`.github/workflows/agbredo-example.yml` runs the telemetry step and then one of two scenarios, chosen when you run it by hand:
 
-```text
-examples/hello-agent/agent.py            -> examples/hello-agent/agent.py
-examples/hello-agent/agbredo-example.yml -> .github/workflows/agbredo-example.yml
-```
+- `claude` (the default): a real Claude Code step that says hi. It needs the secret `CLAUDE_CODE_OAUTH_TOKEN`.
+- `otlp`: [`examples/fake-telemetry/send.py`](examples/fake-telemetry/send.py) pretends to be Claude Code. It calls no model and sends made-up telemetry, including one repeated export that Agbredo counts once.
 
-Register a deployment with workflow `agbredo-example.yml`, set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`, then run the workflow by hand and choose a scenario. Its job only needs `id-token: write` and `contents: read`. A fresh OIDC token is requested for each report with `AGBREDO_BASE_URL` as its audience. Agbredo verifies the issuer, signature, expiry, audience, repository, workflow file and configured reference, and then asks GitHub for the same run attempt. Direct jobs and reusable workflows are both supported; the identity is always the caller workflow.
+To use it in a repository where the App is installed, copy the workflow to `.github/workflows/agbredo-example.yml` and, for `otlp`, `examples/fake-telemetry/send.py` to the same path. In that repository the line `uses: ./integrations/claude-code-otlp` must become `uses: xpmatteo/agbredo/integrations/claude-code-otlp@main`, because the local path exists only in this repository. Register a deployment with workflow `agbredo-example.yml`, set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`, then run the workflow by hand. Its job only needs `id-token: write` and `contents: read`. The telemetry step requests an OIDC token with `AGBREDO_BASE_URL` as its audience. Agbredo verifies the issuer, signature, expiry, audience, repository, workflow file and configured reference, and then asks GitHub for the same run attempt. Direct jobs and reusable workflows are both supported; the identity is always the caller workflow.
 
-The `otlp` scenario shows the telemetry path. It runs the `integrations/claude-code-otlp` action, then sends made-up Claude Code telemetry, including one repeated export that is counted once. Other repositories use the action as `xpmatteo/agbredo/integrations/claude-code-otlp@main`.
-
-Run `python3 examples/hello-agent/agent.py play` on your machine to see the reports it would send.
+Run `python3 examples/fake-telemetry/send.py` on your machine to see the payloads it would send.
 
 ## Spending and recovery
 
-Estimated consumption is stored as integer microdollars (`cost_micros`; 1 USD = 1,000,000), with separate reported token counts and optional cache counters. Stable event IDs prevent duplicate accounting on retries. Actual Claude subscription charges and remaining subscription quota are unknown. The dashboard shows an advisory threshold flag and never interrupts agents.
+Estimated consumption is stored as integer microdollars (`cost_micros`; 1 USD = 1,000,000), with separate reported token counts and optional cache counters. A repeated telemetry export is counted once. Actual Claude subscription charges and remaining subscription quota are unknown. The dashboard shows an advisory threshold flag and never interrupts agents.
 
-Webhooks plus polling (every 30 seconds) reconcile the state of runs that were reported but not yet finished, so a lost webhook only delays the update.
+Webhooks plus polling (every 30 seconds) reconcile the state of runs that Agbredo knows but that have not finished, so a lost webhook only delays the update.
 
 ## Railway deployment
 
@@ -95,7 +91,7 @@ Webhooks plus polling (every 30 seconds) reconcile the state of runs that were r
 3. Generate a public HTTPS domain for the application and set `AGBREDO_BASE_URL` to its exact origin, without a trailing slash.
 4. Set all App/OAuth/webhook credentials, `AGBREDO_GITHUB_PRIVATE_KEY` (multiline PEM), `AGBREDO_SESSION_KEY`, and `AGBREDO_ADMIN_USERS` as Railway variables. Omit the local private-key-file variable.
 5. Update the GitHub App callback and webhook URLs to this domain; install the App on the agent repository.
-6. Deploy, sign in, register the example agent and run a few of its scenarios.
+6. Deploy, sign in, register the example agent and run it.
 
 Optional: to keep the full Claude Code telemetry for later analysis, run an OTLP store such as OpenObserve on Railway's private network. Set `OTLP_FORWARD_URL` to its OTLP base, without `/v1/...` (for example `http://openobserve:5080/api/default`), and `OTLP_AUTH_TOKEN` to the base64 of `user:password`. Agbredo then forwards the metrics, logs and traces it accepts. When `OTLP_FORWARD_URL` is unset, nothing is forwarded.
 
@@ -107,8 +103,7 @@ Railway's `PORT` overrides `AGBREDO_PORT` (default `8080`); `DATABASE_URL` is al
 
 ```sh
 go test ./...
-python3 -m unittest discover -s examples/hello-agent -p 'test_*.py'
-python3 -m unittest discover -s integrations/claude-code -p 'test_*.py'
+python3 -m unittest discover -s examples/fake-telemetry -p 'test_*.py'
 ```
 
 The PostgreSQL integration suite creates a private schema for each test, applies the migrations there, and drops only that test's schema afterward. It never resets the database or its public schema. The test database role needs permission to create schemas and migration objects; a separate development test database keeps test activity isolated:
@@ -118,6 +113,6 @@ docker compose exec postgres createdb -U agbredo agbredo_test
 AGBREDO_TEST_DATABASE_URL='postgres://agbredo:agbredo-local@localhost:5432/agbredo_test?sslmode=disable' go test ./...
 ```
 
-Automated tests use external GitHub test doubles. Live GitHub Actions, App OAuth and Railway deployment require your credentials and repository configuration. To check a deployment, run the example workflow with each scenario and confirm the run page shows the expected status, estimates and events.
+Automated tests use external GitHub test doubles. Live GitHub Actions, App OAuth and Railway deployment require your credentials and repository configuration. To check a deployment, run the example workflow with each scenario and confirm the run page shows the expected status, agent run, estimates and events.
 
-The primary routes are `/`, `/agents`, `/agents/{id}`, `/runs` and `/runs/{id}`. Machine endpoints are `/api/agents/{id}/observations` (reports from runners) and `/api/github/webhook`.
+The primary routes are `/`, `/agents`, `/agents/{id}`, `/runs` and `/runs/{id}`. Machine endpoints are `/api/agents/{id}/otlp-token` (telemetry tokens for runners), `/v1/metrics`, `/v1/logs` and `/v1/traces` (telemetry from Claude Code) and `/api/github/webhook`.
