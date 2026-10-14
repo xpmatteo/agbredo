@@ -9,7 +9,7 @@ A small action which lets Claude Code send its OpenTelemetry straight to Agbredo
 3. Put the action before each Claude Code step. Refer to it in this repository, so there is nothing to copy. Give each one its own `source` name. The input is called `source` for backwards compatibility; it names the agent run. Letters, digits, dots, underscores and hyphens are allowed.
 
 ```yaml
-- uses: xpmatteo/agbredo/integrations/claude-code-otlp@main
+- uses: xpmatteo/agbredo/integrations/claude-code-otlp@v1
   with:
     url: ${{ vars.AGBREDO_URL }}
     source: review
@@ -19,7 +19,7 @@ A small action which lets Claude Code send its OpenTelemetry straight to Agbredo
     prompt: Your existing prompt
 ```
 
-`@main` keeps the action in step with the server, which is deployed from `main`. Workflows in this repository use `./integrations/claude-code-otlp`.
+Pin a release tag such as `@v1`, not `@main`. Every push to `main` deploys the server, and pipelines must not change with it. A new tag is cut when the action changes; the server keeps accepting older tags. Workflows in this repository use `./integrations/claude-code-otlp`.
 
 The Claude step stays as it was. The action only sets environment variables for the steps after it. Each agent run shows up on the run page under its `source` name.
 

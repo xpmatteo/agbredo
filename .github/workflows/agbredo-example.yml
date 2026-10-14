@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       # The telemetry step goes right before the Claude Code step and names it.
       # A workflow with several Claude Code steps puts one before each, with a different source name for each.
-      # In another repository, use xpmatteo/agbredo/integrations/claude-code-otlp@main instead of the local path.
+      # In another repository, use xpmatteo/agbredo/integrations/claude-code-otlp@v1 instead of the local path.
       - name: Get a telemetry token
         uses: ./integrations/claude-code-otlp
         with:
