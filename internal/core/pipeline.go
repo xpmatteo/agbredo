@@ -21,6 +21,9 @@ type Pipeline struct {
 
 var commitSHA = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
+// jobWorkflowRef splits job_workflow_ref, path@ref, after the workflow file.
+var jobWorkflowRef = regexp.MustCompile(`^(.+?\.ya?ml)@(.+)$`)
+
 // PipelineOf reads the pipeline from a job's OIDC identity. It is nil when the
 // job ran no reusable workflow: then job_workflow_ref is the caller workflow
 // itself, and there is no pipeline to record.
@@ -29,11 +32,12 @@ func PipelineOf(i Identity) *Pipeline {
 	if i.JobWorkflowRef == "" || i.JobWorkflowRef == caller {
 		return nil
 	}
-	at := strings.LastIndex(i.JobWorkflowRef, "@")
-	if at <= 0 || at == len(i.JobWorkflowRef)-1 {
+	// The ref may itself hold "@", so the path ends at the first ".yml@" or ".yaml@".
+	m := jobWorkflowRef.FindStringSubmatch(i.JobWorkflowRef)
+	if m == nil {
 		return nil
 	}
-	p := &Pipeline{Path: i.JobWorkflowRef[:at], Ref: i.JobWorkflowRef[at+1:]}
+	p := &Pipeline{Path: m[1], Ref: m[2]}
 	if commitSHA.MatchString(i.JobWorkflowSHA) {
 		p.SHA = i.JobWorkflowSHA
 	}

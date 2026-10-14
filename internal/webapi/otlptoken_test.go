@@ -3,11 +3,16 @@ package webapi
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"agbredo/internal/core"
+	"agbredo/internal/forward"
 	"agbredo/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -118,5 +123,48 @@ func TestDatabaseTokenWithoutDeploymentID(t *testing.T) {
 	}
 	if fleet, _ = service.Fleet(ctx); len(fleet.Deployments) != 1 {
 		t.Fatalf("%d deployments", len(fleet.Deployments))
+	}
+}
+
+// A trace that is not valid JSON is refused with 400 and never forwarded.
+// A valid one sent after it is the first thing the store receives.
+func TestDatabaseMalformedTraceIsRefusedAndNotForwarded(t *testing.T) {
+	service := databaseService(t, gitHub{run: core.WorkflowRun{ID: 777, Attempt: 1, Workflow: "agent.yml", Status: "in_progress"}})
+	received := make(chan string, 10)
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- r.URL.Path + " " + string(body)
+	}))
+	defer store.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := testAPI(&fakeVerifier{identity: core.Identity{Repository: "acme/agent", Workflow: "agent.yml", Ref: "refs/heads/main", RunID: 777, RunAttempt: 1, EventName: "push"}})
+	a.Service = service
+	a.Forward = forward.New(store.URL, "dXNlcjpwYXNz", a.Logger)
+	go a.Forward.Run(ctx)
+	code, reply := postToken(t, a, "/api/otlp-token")
+	if code != http.StatusOK {
+		t.Fatalf("token: status %d", code)
+	}
+	headers := map[string]string{"Authorization": "Bearer " + reply.Token, "Content-Type": "application/json"}
+	if w := requestAPI(a, http.MethodPost, "/v1/traces", `{"resourceSpans":[`, headers); w.Code != http.StatusBadRequest {
+		t.Fatalf("malformed trace: status %d", w.Code)
+	}
+	if w := requestAPI(a, http.MethodPost, "/v1/traces", `{"resourceSpans":[]}`, headers); w.Code != http.StatusOK {
+		t.Fatalf("valid trace: status %d", w.Code)
+	}
+	select {
+	case got := <-received:
+		// The malformed body is not valid JSON; the first thing forwarded must be.
+		if !strings.HasPrefix(got, "/v1/traces ") || !json.Valid([]byte(strings.TrimPrefix(got, "/v1/traces "))) {
+			t.Fatalf("the store first received %q", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the valid trace was not forwarded")
+	}
+	select {
+	case got := <-received:
+		t.Fatalf("forwarded more than the valid trace: %q", got)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
