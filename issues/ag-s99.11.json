@@ -15,11 +15,15 @@
     {
       "text": "2026-10-14, Matt: old report rows can be dropped. Add a new migration deleting events of type claude.execution; remove Event.Claude, the per-event token/cost/duration fields and the run page's report section. Run totals already on runs stay.",
       "timestamp": "2026-10-14T14:46:19Z"
+    },
+    {
+      "text": "2026-10-14, Matt: migrations must never be destructive. No migration deletes the old report rows; Matt deletes data by hand when asked (events where type = 'claude.execution'). The code must still load old rows (the extra 'claude' key in stored JSON is ignored by encoding/json).",
+      "timestamp": "2026-10-14T14:51:44Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Drop the reporter (integrations/claude-code); telemetry is the only usage path",
   "type": "task",
-  "updated_at": "2026-10-14T14:46:19Z"
+  "updated_at": "2026-10-14T14:51:44Z"
 }
