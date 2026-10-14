@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T12:22:58Z",
+  "description": "DESIGN TALK (stored data). Glossary: configuration = trigger event, ref, threshold at the time, Claude Code version, model and effort. Threshold and Claude Code version are stored already.",
+  "id": "ag-s99.5",
+  "labels": [],
+  "parent": "ag-s99",
+  "priority": 2,
+  "status": "open",
+  "title": "Record run configuration: trigger event, model, effort",
+  "type": "task",
+  "updated_at": "2026-10-14T12:22:58Z"
+}
