@@ -25,7 +25,7 @@ Agent code comes from central repositories. "An agent running in several repos" 
 This is broad and changes slowly. It is not a task list. Do not record progress here.
 
 - Overview of agent activity across repos.
-- History of activations.
+- History of runs.
 - Details of each run, with links to GitHub.
 - Notices when an agent escalates to a person, usually by opening a GitHub issue or PR. Prefer to learn this from GitHub webhooks. If that does not work, extend the reporter.
 - Most other features an enterprise would need (access, audit, budgets), simulated.
@@ -39,7 +39,7 @@ Keep new work compatible with this direction. The write boundary with GitHub is 
 - `migrations/`: database migrations.
 - `integrations/`: pieces that run inside an agent's workflow.
 - `examples/`: sample agents.
-- `docs/`: `design.md` for the design, `routes.md` for the routes.
+- `docs/`: `design.md` for the design, `routes.md` for the routes, `glossary.md` for the domain words.
 
 ## Commands
 
