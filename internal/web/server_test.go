@@ -117,7 +117,7 @@ func TestDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
 	s := &testService{deployment: core.Deployment{ID: "agent-1", Enabled: true}, run: core.Run{ID: "run-1", Status: "running"}}
 	w := serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil)
 	if strings.Contains(w.Body.String(), "Launch workflow") || !strings.Contains(w.Body.String(), "Reporting enabled") {
-		t.Fatal("agent page offered dispatch", w.Body.String())
+		t.Fatal("deployment page offered dispatch", w.Body.String())
 	}
 	w = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil)
 	for _, text := range []string{"Unavailable", "Actual subscription charges unknown", "Runs in GitHub Actions; Agbredo only receives reports"} {
@@ -182,5 +182,27 @@ func TestRunPageShowsEachClaudeStepAndKeepsMissingValuesMissing(t *testing.T) {
 	s.run.Sources = nil
 	if strings.Contains(serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(), "Claude Code steps") {
 		t.Fatal("empty table shown")
+	}
+}
+
+func TestSaveDeploymentRevisionField(t *testing.T) {
+	form := func(version string) url.Values {
+		v := url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"example"}, "repository": {"example"}, "workflow": {"agent.yml"}, "ref": {"main"}, "installation_id": {"123"}, "budget": {"1"}, "enabled": {"on"}}
+		if version != "" {
+			v.Set("version", version)
+		}
+		return v
+	}
+	s := &testService{}
+	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents/agent-1", form("3"))
+	if w.Code != http.StatusSeeOther || s.saved.Revision != 3 {
+		t.Fatalf("status = %d, revision = %d", w.Code, s.saved.Revision)
+	}
+	for _, bad := range []string{"", "abc", "0", "-1"} {
+		s := &testService{}
+		w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents/agent-1", form(bad))
+		if w.Code != http.StatusBadRequest || s.saved.Revision != 0 {
+			t.Fatalf("version %q: status = %d", bad, w.Code)
+		}
 	}
 }

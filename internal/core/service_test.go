@@ -51,7 +51,7 @@ func TestDeploymentValidation(t *testing.T) {
 			a := validDeployment()
 			c.change(&a)
 			if ValidateDeployment(a) == nil {
-				t.Fatal("accepted invalid agent")
+				t.Fatal("accepted invalid deployment")
 			}
 		})
 	}

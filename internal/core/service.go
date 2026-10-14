@@ -39,7 +39,7 @@ func (s *Service) SaveDeployment(ctx context.Context, a Deployment) (Deployment,
 			return a, e
 		}
 		if a.Revision != previous.Revision {
-			return a, fmt.Errorf("agent was updated by another user; reload its configuration: %w", ErrConflict)
+			return a, fmt.Errorf("deployment was updated by another user; reload its configuration: %w", ErrConflict)
 		}
 		a.Revision = previous.Revision + 1
 		_, err = tx.Exec(ctx, "UPDATE agents SET document=$2 WHERE id=$1", a.ID, mustJSON(a))

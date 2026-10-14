@@ -85,8 +85,8 @@ func (o Report) validate() error {
 }
 
 // The "observe:" prefix is kept so IDs of runs stored earlier stay stable.
-func reportRunID(agent string, run int64, attempt int64) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("observe:%s:%d:%d", agent, run, attempt)))
+func reportRunID(deployment string, run int64, attempt int64) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("observe:%s:%d:%d", deployment, run, attempt)))
 	return hex.EncodeToString(h[:])
 }
 
@@ -99,16 +99,16 @@ func verifyReport(a Deployment, i Identity, gh WorkflowRun) error {
 
 // lockRun finds the run for a verified GitHub run attempt, or creates it, and
 // locks it for the rest of the transaction. The first valid request creates it.
-func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, agentID string, i Identity) (Run, WorkflowRun, error) {
+func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i Identity) (Run, WorkflowRun, error) {
 	var gh WorkflowRun
-	id := reportRunID(agentID, i.RunID, i.RunAttempt)
+	id := reportRunID(deploymentID, i.RunID, i.RunAttempt)
 	r, err := readJSON[Run](ctx, tx, "SELECT document FROM runs WHERE id=$1", id)
 	if err != nil && err != ErrNotFound {
 		return r, gh, err
 	}
 	a := r.Deployment
 	if err == ErrNotFound {
-		a, err = readJSON[Deployment](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR SHARE", agentID)
+		a, err = readJSON[Deployment](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR SHARE", deploymentID)
 		if err != nil {
 			return r, gh, err
 		}
@@ -145,7 +145,7 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, agentID string, i Iden
 
 // Report binds independently triggered workflows using their signed GitHub
 // identity. It never dispatches a workflow or performs an action.
-func (s *Service) Report(ctx context.Context, agentID string, o Report, i Identity) (Run, bool, error) {
+func (s *Service) Report(ctx context.Context, deploymentID string, o Report, i Identity) (Run, bool, error) {
 	if o.GitHubRunID != i.RunID || o.GitHubRunAttempt != i.RunAttempt || i.RunID <= 0 || i.RunAttempt <= 0 {
 		return Run{}, false, ErrUnauthorized
 	}
@@ -157,7 +157,7 @@ func (s *Service) Report(ctx context.Context, agentID string, o Report, i Identi
 		return Run{}, false, err
 	}
 	defer tx.Rollback(ctx)
-	r, gh, err := s.lockRun(ctx, tx, agentID, i)
+	r, gh, err := s.lockRun(ctx, tx, deploymentID, i)
 	if err != nil {
 		return r, false, err
 	}

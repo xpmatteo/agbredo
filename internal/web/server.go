@@ -92,9 +92,9 @@ func New(service Service, auth Auth) *Server {
 
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /{$}", s.protect(s.dashboard, false))
-	mux.HandleFunc("GET /agents", s.protect(s.agents, false))
+	mux.HandleFunc("GET /agents", s.protect(s.deployments, false))
 	mux.HandleFunc("POST /agents", s.protect(s.saveDeployment, true))
-	mux.HandleFunc("GET /agents/{id}", s.protect(s.agent, false))
+	mux.HandleFunc("GET /agents/{id}", s.protect(s.deployment, false))
 	mux.HandleFunc("POST /agents/{id}", s.protect(s.saveDeployment, true))
 	mux.HandleFunc("POST /agents/{id}/delete", s.protect(s.deleteDeployment, true))
 	mux.HandleFunc("GET /runs", s.protect(s.runs, false))
@@ -175,7 +175,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "dashboard", p)
 }
 
-func (s *Server) agents(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deployments(w http.ResponseWriter, r *http.Request) {
 	f, err := s.service.Fleet(r.Context())
 	if err != nil {
 		s.failure(w, err)
@@ -184,7 +184,7 @@ func (s *Server) agents(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "agents", page{Title: "Deployments", Fleet: f, Deployment: core.Deployment{Ref: "main", Enabled: true}})
 }
 
-func (s *Server) agent(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deployment(w http.ResponseWriter, r *http.Request) {
 	a, err := s.service.Deployment(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.failure(w, err)
@@ -208,7 +208,7 @@ func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {
 	if r.PathValue("id") != "" {
 		revision, err = strconv.ParseInt(r.FormValue("version"), 10, 64)
 		if err != nil || revision <= 0 {
-			http.Error(w, "Invalid agent revision. Reload the page.", http.StatusBadRequest)
+			http.Error(w, "Invalid deployment revision. Reload the page.", http.StatusBadRequest)
 			return
 		}
 	}
