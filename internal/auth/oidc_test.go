@@ -105,6 +105,27 @@ func TestOIDCAuthenticatesOnlyBoundShortLivedWorkflowTokens(t *testing.T) {
 	if identity.Repository != "o/r" || identity.Workflow != "agent.yml" || identity.Ref != "refs/heads/main" {
 		t.Fatalf("identity must come from workflow_ref, got %#v", identity)
 	}
+	// A direct job: job_workflow_ref equals workflow_ref, as in real tokens.
+	direct := valid()
+	direct["job_workflow_ref"] = direct["workflow_ref"]
+	identity, err = o.Verify(context.Background(), sign(direct, "key1", jwt.SigningMethodRS256))
+	if err != nil {
+		t.Fatalf("direct job rejected: %v", err)
+	}
+	if identity.Repository != "o/r" || identity.Workflow != "agent.yml" || identity.Ref != "refs/heads/main" {
+		t.Fatalf("direct job identity mismatch %#v", identity)
+	}
+	// A reusable workflow in the same repository: the identity is still the caller.
+	sameRepo := valid()
+	sameRepo["workflow_ref"] = "o/r/.github/workflows/other.yml@refs/heads/main"
+	sameRepo["job_workflow_ref"] = "o/r/.github/workflows/agent.yml@refs/heads/main"
+	identity, err = o.Verify(context.Background(), sign(sameRepo, "key1", jwt.SigningMethodRS256))
+	if err != nil {
+		t.Fatalf("same-repository reusable workflow rejected: %v", err)
+	}
+	if identity.Repository != "o/r" || identity.Workflow != "other.yml" || identity.Ref != "refs/heads/main" {
+		t.Fatalf("identity must come from workflow_ref, got %#v", identity)
+	}
 	for _, raw := range []string{sign(valid(), "unknown", jwt.SigningMethodRS256), sign(valid(), "key1", jwt.SigningMethodHS256), strings.Repeat("x", 20000), "invalid"} {
 		if _, err := o.Verify(context.Background(), raw); err == nil {
 			t.Fatal("invalid signature accepted")

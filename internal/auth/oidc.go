@@ -31,8 +31,10 @@ type OIDC struct {
 }
 type runnerClaims struct {
 	jwt.RegisteredClaims
-	Repository     string `json:"repository"`
-	WorkflowRef    string `json:"workflow_ref"`
+	Repository  string `json:"repository"`
+	WorkflowRef string `json:"workflow_ref"`
+	// JobWorkflowRef names the pipeline (reusable workflow) that ran. It is parsed
+	// so the pipeline can be recorded later (ag-s99.2). Never use it for identity.
 	JobWorkflowRef string `json:"job_workflow_ref"`
 	Ref            string `json:"ref"`
 	RunID          string `json:"run_id"`
