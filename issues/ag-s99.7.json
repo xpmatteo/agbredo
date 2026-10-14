@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T12:22:59Z",
+  "description": "Glossary: an agent run is one Claude Code execution in a run. Keep the 'source' action input and stored keys for compatibility; change Go names and dashboard wording.",
+  "id": "ag-s99.7",
+  "labels": [],
+  "parent": "ag-s99",
+  "priority": 2,
+  "status": "open",
+  "title": "Rename source to agent run in code and dashboard",
+  "type": "task",
+  "updated_at": "2026-10-14T12:22:59Z"
+}
