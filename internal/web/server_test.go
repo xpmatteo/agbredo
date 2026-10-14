@@ -125,10 +125,10 @@ func TestDeploymentFormHasNoRefAndRefusesDuplicates(t *testing.T) {
 			t.Fatalf("%s still shows a ref: %s", path, body)
 		}
 	}
-	s.saveErr = fmt.Errorf("a deployment of acme/agent with workflow agent.yml is already registered: %w", core.ErrInvalid)
+	s.saveErr = fmt.Errorf("a deployment of acme/agent with workflow agent.yml already exists: %w", core.ErrInvalid)
 	form := url.Values{"csrf": {"test-csrf"}, "name": {"Example"}, "owner": {"acme"}, "repository": {"agent"}, "workflow": {"agent.yml"}, "installation_id": {"123"}, "budget": {"1"}, "enabled": {"on"}}
 	w := serve(s, testAuth{"admin", true}, http.MethodPost, "/agents", form)
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "already registered") {
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "already exists") {
 		t.Fatalf("duplicate: status = %d, body = %s", w.Code, w.Body.String())
 	}
 }

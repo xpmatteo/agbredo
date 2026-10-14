@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -190,6 +191,12 @@ func TestNotInstalledIsForbidden(t *testing.T) {
 	testAPI(&fakeVerifier{}).failure(w, core.ErrNotInstalled)
 	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "not installed") {
 		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	// A GitHub failure is the server's problem, not a refusal.
+	w = httptest.NewRecorder()
+	testAPI(&fakeVerifier{}).failure(w, errors.New("find GitHub App installation: 502"))
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("GitHub failure answered %d", w.Code)
 	}
 }
 

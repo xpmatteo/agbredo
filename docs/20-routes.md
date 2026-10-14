@@ -24,7 +24,7 @@ Gets a token for one Claude Code step to send its telemetry. `Authorization: Bea
 
 - The server checks the token (issuer, signature, expiry, audience). The deployment is the one with the token's repository and workflow file; owner and repository ignore case. If there is none, the server asks GitHub, as the App, for the App's installation on the repository, and creates the deployment (see `10-design.md`, Flow). Then it checks that GitHub has that run attempt. The ref is not checked; it is recorded on the run.
 - Body and `200` reply: as for `POST /api/agents/{id}/otlp-token` below.
-- Errors: `401` missing or bad token, `400` bad body or `source`, or a workflow file name Agbredo cannot keep, `403` the GitHub App is not installed on the repository, the deployment is disabled, or the job does not match GitHub's run, `409` the run has already finished. A refused request creates nothing.
+- Errors: `401` missing or bad token, `400` bad body or `source`, or a workflow file name Agbredo cannot keep, `403` the GitHub App is not installed on the repository, the deployment is disabled, or the job does not match GitHub's run, `404` the deployment was deleted while the request was handled (rare; the next request creates a new one), `409` the run has already finished, `500` GitHub or the database failed, for example GitHub did not answer the installation lookup. A refused or failed request creates nothing.
 
 ### `POST /api/agents/{id}/otlp-token`
 

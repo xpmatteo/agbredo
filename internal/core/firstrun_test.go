@@ -114,6 +114,30 @@ func TestDatabaseFirstRunNeedsTheAppAndAValidRun(t *testing.T) {
 	}
 }
 
+// When GitHub fails to answer, the request fails as a server error, not as a
+// refusal, and stores nothing. A workflow file name Agbredo cannot keep is
+// refused before GitHub is asked.
+func TestDatabaseFirstRunWhenGitHubFailsOrTheNameIsBad(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	i := newWorkflowRun(f, 777)
+	f.installErr = errors.New("find GitHub App installation: 502 Bad Gateway")
+	_, err := s.MintTokenForWorkflow(ctx, "review", i)
+	if err == nil || errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrInvalid) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrConflict) {
+		t.Fatalf("GitHub failure mapped to a client error: %v", err)
+	}
+	lookups := f.lookups
+	bad := i
+	bad.Workflow = "my agent.yml"
+	if _, err = s.MintTokenForWorkflow(ctx, "review", bad); !errors.Is(err, ErrInvalid) || f.lookups != lookups {
+		t.Fatalf("bad workflow name: %v, asked GitHub %d times", err, f.lookups-lookups)
+	}
+	var stored int
+	if err = s.DB.QueryRow(ctx, "SELECT (SELECT count(*) FROM agents)+(SELECT count(*) FROM runs)").Scan(&stored); err != nil || stored != 0 {
+		t.Fatalf("failed requests stored %d rows: %v", stored, err)
+	}
+}
+
 // A disabled deployment gets no token on either route, and is not replaced.
 func TestDatabaseDisabledDeploymentIsRefused(t *testing.T) {
 	s, f := testService(t)

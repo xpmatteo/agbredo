@@ -36,15 +36,21 @@ func (s *Service) MintTokenForWorkflow(ctx context.Context, agentRun string, i I
 	if !errors.Is(err, ErrNotFound) {
 		return Grant{}, err
 	}
-	installation, err := s.Backend.Installation(ctx, owner, repository)
-	if err != nil {
-		return Grant{}, err
-	}
 	// Owner and repository come from the OIDC token, in GitHub's own spelling.
 	fresh := Deployment{ID: ID(), Name: defaultName(owner, repository, i.Workflow), Owner: owner, Repository: repository, Workflow: i.Workflow,
-		InstallationID: installation, ThresholdMicros: s.DefaultThresholdMicros, Enabled: true, Revision: 1}
-	if err = ValidateDeployment(fresh); err != nil {
+		ThresholdMicros: s.DefaultThresholdMicros, Enabled: true, Revision: 1}
+	// Checked before GitHub is asked, so that names Agbredo cannot keep never
+	// reach GitHub. The installation, still unknown, is checked after.
+	probe := fresh
+	probe.InstallationID = 1
+	if err = ValidateDeployment(probe); err != nil {
 		return Grant{}, invalid("this workflow cannot become a deployment: " + err.Error())
+	}
+	if fresh.InstallationID, err = s.Backend.Installation(ctx, owner, repository); err != nil {
+		return Grant{}, err
+	}
+	if err = ValidateDeployment(fresh); err != nil {
+		return Grant{}, err
 	}
 	return s.mint(ctx, agentRun, i, func(tx pgx.Tx) (string, error) { return insertDeployment(ctx, tx, fresh) })
 }
