@@ -57,14 +57,14 @@ Any non-trivial work needs these two steps:
 - `internal/`: server code. Run `ls internal` for the packages. `core` holds the domain logic, `store` the database, `web` the dashboard, `webapi` the report API, `auth` login and OIDC, `github` the GitHub client.
 - `migrations/`: database migrations.
 - `integrations/`: pieces that run inside an agent's workflow.
-- `examples/`: sample agents.
+- `examples/`: `fake-telemetry`, a pretend Claude Code step that sends made-up telemetry.
 - `docs/`: `00-glossary.md` for the domain words, `10-design.md` for the design, `20-routes.md` for the routes. Read them in that order.
 
 ## Commands
 
 - Build and check: `go build ./... && go vet ./...`
 - Tests: `go test ./...`. Database tests are skipped unless `AGBREDO_TEST_DATABASE_URL` is set. Use a throwaway postgres:17-alpine docker container.
-- Python tests: `python3 -m unittest discover -s examples/hello-agent -p 'test_*.py'` and the same for `integrations/claude-code`.
+- Python tests: `python3 -m unittest discover -s examples/fake-telemetry -p 'test_*.py'`.
 - Run locally: see the README.
 
 ## Rules

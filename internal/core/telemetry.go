@@ -55,7 +55,7 @@ func (s *Service) MintToken(ctx context.Context, deploymentID, agentRun string, 
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	r.Status = reportedStatus(r.Status, gh)
+	r.Status = statusFromGitHub(r.Status, gh)
 	if Terminal(r.Status) {
 		return "", time.Time{}, ErrConflict
 	}
@@ -82,7 +82,7 @@ func TraceParent(deploymentID string, i Identity) string {
 	if _, err := rand.Read(span[:]); err != nil {
 		panic(err)
 	}
-	return "00-" + reportRunID(deploymentID, i.RunID, i.RunAttempt)[:32] + "-" + hex.EncodeToString(span[:]) + "-01"
+	return "00-" + attemptRunID(deploymentID, i.RunID, i.RunAttempt)[:32] + "-" + hex.EncodeToString(span[:]) + "-01"
 }
 
 // TelemetryOrigin is the run and agent run a telemetry token belongs to.

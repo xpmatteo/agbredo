@@ -67,6 +67,9 @@ type otlpLogs struct {
 	} `json:"resourceLogs"`
 }
 
+// claudeVersion is the form of a Claude Code version we keep from `app.version`.
+var claudeVersion = regexp.MustCompile(`^(unknown|[0-9]+\.[0-9]+\.[0-9]+)$`)
+
 var tokenTypes = map[string]string{"input": "input", "output": "output", "cacheRead": "cacheRead", "cacheCreation": "cacheCreation"}
 
 func fingerprint(v any) string {

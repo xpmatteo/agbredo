@@ -34,7 +34,7 @@ The repository currently has no Git remote. Its module path is temporarily `agbr
 
 Upgrading from an earlier version: migration `004_report_only.sql` runs on startup and drops the former approval and dispatch tables (`approvals`, `dispatch_jobs`). The `AGBREDO_APPROVAL_TTL` variable is no longer read. Existing PostgreSQL volumes retain their database names and credentials; use those in `AGBREDO_DATABASE_URL` and keep the Compose PostgreSQL settings and health check aligned with that database.
 
-The report route (`POST /api/agents/{id}/observations`) and its reporter (`integrations/claude-code`) are gone; workflows that still call it get `404`. Use the telemetry step instead. Events stored by that route (type `claude.execution`) still load and show in the run's timeline as plain events. No migration removes them.
+The report route (`POST /api/agents/{id}/observations`) and its reporter (`integrations/claude-code`) are gone; workflows that still call it get `410 Gone` with a short note to use the telemetry step. Use the telemetry step instead. Events stored by that route (type `claude.execution`) still load and show in the run's timeline as plain events. No migration removes them.
 
 ## Configure the GitHub App
 
@@ -69,7 +69,14 @@ The estimate threshold flags estimated API consumption only. Agents continue run
 
 ## Try the example agent
 
-`.github/workflows/agbredo-example.yml` runs one real Claude Code step that says hi, with the telemetry step before it. Copy it into a repository where the App is installed. Register a deployment with workflow `agbredo-example.yml`, set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID` and the secret `CLAUDE_CODE_OAUTH_TOKEN`, then run the workflow by hand. Its job only needs `id-token: write` and `contents: read`. The telemetry step requests an OIDC token with `AGBREDO_BASE_URL` as its audience. Agbredo verifies the issuer, signature, expiry, audience, repository, workflow file and configured reference, and then asks GitHub for the same run attempt. Direct jobs and reusable workflows are both supported; the identity is always the caller workflow. Other repositories use the action as `xpmatteo/agbredo/integrations/claude-code-otlp@main`.
+`.github/workflows/agbredo-example.yml` runs the telemetry step and then one of two scenarios, chosen when you run it by hand:
+
+- `claude` (the default): a real Claude Code step that says hi. It needs the secret `CLAUDE_CODE_OAUTH_TOKEN`.
+- `otlp`: [`examples/fake-telemetry/send.py`](examples/fake-telemetry/send.py) pretends to be Claude Code. It calls no model and sends made-up telemetry, including one repeated export that Agbredo counts once.
+
+To use it in a repository where the App is installed, copy the workflow to `.github/workflows/agbredo-example.yml` and, for `otlp`, `examples/fake-telemetry/send.py` to the same path. In that repository the line `uses: ./integrations/claude-code-otlp` must become `uses: xpmatteo/agbredo/integrations/claude-code-otlp@main`, because the local path exists only in this repository. Register a deployment with workflow `agbredo-example.yml`, set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`, then run the workflow by hand. Its job only needs `id-token: write` and `contents: read`. The telemetry step requests an OIDC token with `AGBREDO_BASE_URL` as its audience. Agbredo verifies the issuer, signature, expiry, audience, repository, workflow file and configured reference, and then asks GitHub for the same run attempt. Direct jobs and reusable workflows are both supported; the identity is always the caller workflow.
+
+Run `python3 examples/fake-telemetry/send.py` on your machine to see the payloads it would send.
 
 ## Spending and recovery
 
@@ -96,6 +103,7 @@ Railway's `PORT` overrides `AGBREDO_PORT` (default `8080`); `DATABASE_URL` is al
 
 ```sh
 go test ./...
+python3 -m unittest discover -s examples/fake-telemetry -p 'test_*.py'
 ```
 
 The PostgreSQL integration suite creates a private schema for each test, applies the migrations there, and drops only that test's schema afterward. It never resets the database or its public schema. The test database role needs permission to create schemas and migration objects; a separate development test database keeps test activity isolated:
@@ -105,6 +113,6 @@ docker compose exec postgres createdb -U agbredo agbredo_test
 AGBREDO_TEST_DATABASE_URL='postgres://agbredo:agbredo-local@localhost:5432/agbredo_test?sslmode=disable' go test ./...
 ```
 
-Automated tests use external GitHub test doubles. Live GitHub Actions, App OAuth and Railway deployment require your credentials and repository configuration. To check a deployment, run the example workflow and confirm the run page shows the expected status, agent run, estimates and events.
+Automated tests use external GitHub test doubles. Live GitHub Actions, App OAuth and Railway deployment require your credentials and repository configuration. To check a deployment, run the example workflow with each scenario and confirm the run page shows the expected status, agent run, estimates and events.
 
 The primary routes are `/`, `/agents`, `/agents/{id}`, `/runs` and `/runs/{id}`. Machine endpoints are `/api/agents/{id}/otlp-token` (telemetry tokens for runners), `/v1/metrics`, `/v1/logs` and `/v1/traces` (telemetry from Claude Code) and `/api/github/webhook`.

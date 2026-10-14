@@ -155,8 +155,17 @@ func TestWebhookDeliveryValidationAndLimits(t *testing.T) {
 func TestReportRouteIsGone(t *testing.T) {
 	v := &fakeVerifier{}
 	w := requestAPI(testAPI(v), http.MethodPost, "/api/agents/agent/observations", `{}`, map[string]string{"Authorization": "Bearer signed-token"})
-	if w.Code != http.StatusNotFound || v.calls != 0 {
-		t.Fatalf("status %d, verifier calls %d", w.Code, v.calls)
+	if w.Code != http.StatusGone || v.calls != 0 || !strings.Contains(w.Body.String(), "claude-code-otlp") {
+		t.Fatalf("status %d, verifier calls %d, body %q", w.Code, v.calls, w.Body.String())
+	}
+}
+
+// The agent run keeps its old wire name ("source") on purpose: deployed workflows send it.
+func TestTokenRequestKeepsSourceWireName(t *testing.T) {
+	var request tokenRequest
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"source":"review"}`))
+	if !decode(httptest.NewRecorder(), r, &request) || request.AgentRun != "review" {
+		t.Fatalf("decoded %+v", request)
 	}
 }
 

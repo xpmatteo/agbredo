@@ -88,28 +88,11 @@ func run(logger *slog.Logger) error {
 		return errors.New("AGBREDO_GITHUB_WEBHOOK_SECRET must contain at least 32 random characters")
 	}
 	service := &core.Service{DB: pool, Backend: backend}
-	mux := http.NewServeMux()
-	login.Register(mux)
-	dashboard := http.NewServeMux()
-	web.New(service, login).Register(dashboard)
-	mux.Handle("/", login.RequireAdmin(dashboard))
 	// Optional: forward accepted telemetry to an OTLP store such as OpenObserve.
 	// OTLP_FORWARD_URL is the OTLP base, e.g. http://openobserve:5080/api/default.
 	forwarder := forward.New(os.Getenv("OTLP_FORWARD_URL"), os.Getenv("OTLP_AUTH_TOKEN"), logger)
-	(&webapi.API{Service: service, Verifier: auth.NewOIDC(baseURL), WebhookSecret: secret, Logger: logger, Forward: forwarder}).Register(mux)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		_, _ = w.Write([]byte("ok\n"))
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		if pool.Ping(checkCtx) != nil {
-			http.Error(w, "database unavailable", 503)
-			return
-		}
-		_, _ = w.Write([]byte("ok\n"))
-	})
+	api := &webapi.API{Service: service, Verifier: auth.NewOIDC(baseURL), WebhookSecret: secret, Logger: logger, Forward: forwarder}
+	mux := newMux(service, login, api, pool.Ping)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = os.Getenv("AGBREDO_PORT")
@@ -147,6 +130,32 @@ func run(logger *slog.Logger) error {
 	}
 	workers.Wait()
 	return nil
+}
+
+// newMux puts every route together: sign-in, the dashboard behind the admin
+// check (it also catches every path nothing else matches), the runner and
+// GitHub routes, and health. ping checks the database.
+func newMux(service web.Service, login *auth.Auth, api *webapi.API, ping func(context.Context) error) *http.ServeMux {
+	mux := http.NewServeMux()
+	login.Register(mux)
+	dashboard := http.NewServeMux()
+	web.New(service, login).Register(dashboard)
+	mux.Handle("/", login.RequireAdmin(dashboard))
+	api.Register(mux)
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if ping(checkCtx) != nil {
+			http.Error(w, "database unavailable", 503)
+			return
+		}
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	return mux
 }
 func security(next http.Handler, logger *slog.Logger) http.Handler {
 	return requestlog.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

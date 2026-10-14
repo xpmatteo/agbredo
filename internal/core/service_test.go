@@ -137,7 +137,7 @@ func startRun(t *testing.T, s *Service, deploymentID, agentRun string, i Identit
 	if _, _, err := s.MintToken(ctx, deploymentID, agentRun, i); err != nil {
 		t.Fatal(err)
 	}
-	r, err := s.Run(ctx, reportRunID(deploymentID, i.RunID, i.RunAttempt))
+	r, err := s.Run(ctx, attemptRunID(deploymentID, i.RunID, i.RunAttempt))
 	if err != nil {
 		t.Fatal(err)
 	}

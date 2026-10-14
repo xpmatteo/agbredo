@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"regexp"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -23,15 +22,13 @@ type ClaudeUsage struct {
 	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
 }
 
-var claudeVersion = regexp.MustCompile(`^(unknown|[0-9]+\.[0-9]+\.[0-9]+)$`)
-
 // The "observe:" prefix is kept so IDs of runs stored earlier stay stable.
-func reportRunID(deployment string, run int64, attempt int64) string {
+func attemptRunID(deployment string, run int64, attempt int64) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("observe:%s:%d:%d", deployment, run, attempt)))
 	return hex.EncodeToString(h[:])
 }
 
-func verifyReport(a Deployment, i Identity, gh WorkflowRun) error {
+func verifyIdentity(a Deployment, i Identity, gh WorkflowRun) error {
 	if i.Repository != a.Owner+"/"+a.Repository || i.Workflow != a.Workflow || !refMatches(a.Ref, i.Ref) || i.RunID <= 0 || i.RunAttempt <= 0 || gh.ID != i.RunID || gh.Attempt != i.RunAttempt || gh.Workflow != a.Workflow || !refMatches(a.Ref, gh.Ref) {
 		return ErrUnauthorized
 	}
@@ -42,7 +39,7 @@ func verifyReport(a Deployment, i Identity, gh WorkflowRun) error {
 // locks it for the rest of the transaction. The first valid request creates it.
 func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i Identity) (Run, WorkflowRun, error) {
 	var gh WorkflowRun
-	id := reportRunID(deploymentID, i.RunID, i.RunAttempt)
+	id := attemptRunID(deploymentID, i.RunID, i.RunAttempt)
 	r, err := readJSON[Run](ctx, tx, "SELECT document FROM runs WHERE id=$1", id)
 	if err != nil && err != ErrNotFound {
 		return r, gh, err
@@ -61,7 +58,7 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i
 	if err != nil {
 		return r, gh, err
 	}
-	if err = verifyReport(a, i, gh); err != nil {
+	if err = verifyIdentity(a, i, gh); err != nil {
 		return r, gh, err
 	}
 	if r.ID == "" {
@@ -77,8 +74,8 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i
 	if err != nil {
 		return r, gh, err
 	}
-	// A racing first report must also match the snapshot which won insertion.
-	if err = verifyReport(r.Deployment, i, gh); err != nil {
+	// A racing first request must also match the snapshot which won insertion.
+	if err = verifyIdentity(r.Deployment, i, gh); err != nil {
 		return r, gh, err
 	}
 	return r, gh, nil
@@ -93,7 +90,7 @@ func addMeasured(total **int64, n *int64) {
 	}
 	**total += *n
 }
-func reportedStatus(current string, gh WorkflowRun) string {
+func statusFromGitHub(current string, gh WorkflowRun) string {
 	if gh.Status != "completed" {
 		return Transition(current, "running")
 	}

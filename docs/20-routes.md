@@ -27,7 +27,9 @@ Gets a token for one Claude Code step to send its telemetry. `Authorization: Bea
 - `200` with `{"token": "agb_...", "expires_at": "...", "traceparent": "00-...-...-01"}`. The `traceparent` has the same trace ID for every step of a run attempt. The token lasts 6 hours, or until the run finishes. It belongs to one run attempt and one agent run. Only its hash is stored.
 - Errors: `401` missing or bad token, `400` bad body or `source`, `403` the job does not match the deployment, `404` unknown deployment, `409` the run has already finished.
 
-`POST /api/agents/{id}/observations`, the former report route, is gone and answers `404`.
+### `POST /api/agents/{id}/observations`
+
+The former report route. It is gone: it answers `410 Gone` with a plain-text note to use `integrations/claude-code-otlp`, before any check of the token or body.
 
 ### `POST /v1/metrics`, `POST /v1/logs` and `POST /v1/traces`
 
