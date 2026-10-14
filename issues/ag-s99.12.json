@@ -2,14 +2,16 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-14T15:43:00Z",
+  "close_reason": "Done together with ag-s99.4: EqualFold on owner/repository, canonical spelling from the token.",
   "created": "2026-10-14T15:24:53Z",
   "description": "From review of ag-s99.3 (2026-10-14). The unique index migrations/006_unique_deployment.sql folds case for owner and repository, but verifyIdentity (internal/core/runbinding.go) and Webhook (internal/core/worker.go) compare Owner+\"/\"+Repository exactly. A deployment registered as ACME/agent never matches runs whose OIDC token says acme/agent (true before ag-s99.3 too). Fix: compare case-insensitively, or store GitHub's canonical name. With ag-s99.4 the deployment is created from the token, which makes the canonical name the natural choice; do it there or after. Check: go test ./... with AGBREDO_TEST_DATABASE_URL.",
   "id": "ag-s99.12",
   "labels": [],
   "parent": "ag-s99",
   "priority": 3,
-  "status": "open",
+  "status": "closed",
   "title": "Match repository names case-insensitively",
   "type": "task",
-  "updated_at": "2026-10-14T15:24:53Z"
+  "updated_at": "2026-10-14T15:43:00Z"
 }
