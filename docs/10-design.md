@@ -60,7 +60,7 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 - The threshold only marks a run. It cannot stop an agent.
 - A run is matched by its caller workflow only. Agbredo does not yet record or check which pipeline or pipeline version a run used.
 - Any code that the caller workflow runs with `id-token: write` (the pipeline, or any workflow or action it calls) can get an OIDC token, and with it a telemetry token for that registered deployment.
-- The ref is not checked. A workflow file with the registered name runs on any branch or tag, so anyone who can push a branch to the repository can get a telemetry token for that deployment. Pull request events are refused.
+- The ref is not checked. A workflow file with the registered name runs on any branch or tag, so anyone who can push a branch to the repository can get a telemetry token for that deployment. Pull request events and pull request refs (`refs/pull/...`) are refused.
 - Telemetry is accepted only as OTLP JSON (`OTEL_EXPORTER_OTLP_PROTOCOL=http/json`), not protobuf.
 - Telemetry sent after GitHub marks the run finished is refused. Claude Code sends its last export when it exits, which is before the run finishes. A job that is killed before that loses the last part of its usage.
 - Forwarding is best effort. Telemetry dropped while the store is down is not sent again. A repeated export is forwarded again, though it is counted once in PostgreSQL.

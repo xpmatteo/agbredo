@@ -76,6 +76,11 @@ func TestOIDCAuthenticatesOnlyBoundShortLivedWorkflowTokens(t *testing.T) {
 		{"workflow ref mismatch", func(c jwt.MapClaims) { c["ref"] = "refs/heads/other" }},
 		{"workflow traversal", func(c jwt.MapClaims) { c["workflow_ref"] = "o/r/.github/workflows/../agent.yml@refs/heads/main" }},
 		{"pull request", func(c jwt.MapClaims) { c["event_name"] = "pull_request" }},
+		{"pull request ref", func(c jwt.MapClaims) {
+			c["event_name"] = "pull_request_review"
+			c["ref"] = "refs/pull/7/merge"
+			c["workflow_ref"] = "o/r/.github/workflows/agent.yml@refs/pull/7/merge"
+		}},
 		{"invalid run", func(c jwt.MapClaims) { c["run_id"] = "0" }},
 		{"invalid attempt", func(c jwt.MapClaims) { c["run_attempt"] = "0" }},
 		{"missing replay identity", func(c jwt.MapClaims) { delete(c, "jti") }},

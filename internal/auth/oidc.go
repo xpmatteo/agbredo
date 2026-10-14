@@ -142,7 +142,7 @@ func (o *OIDC) Verify(ctx context.Context, raw string) (core.Identity, error) {
 	if !claims.ExpiresAt.After(now) || claims.IssuedAt.After(now.Add(30*time.Second)) || claims.IssuedAt.Before(now.Add(-10*time.Minute)) || claims.ExpiresAt.Sub(claims.IssuedAt.Time) > 10*time.Minute || !claims.ExpiresAt.After(claims.IssuedAt.Time) {
 		return fail()
 	}
-	if claims.EventName == "" || claims.EventName == "pull_request" || claims.EventName == "pull_request_target" || claims.Repository == "" || len(strings.Split(claims.Repository, "/")) != 2 || !strings.HasPrefix(claims.Ref, "refs/") {
+	if claims.EventName == "" || claims.EventName == "pull_request" || claims.EventName == "pull_request_target" || strings.HasPrefix(claims.Ref, "refs/pull/") || claims.Repository == "" || len(strings.Split(claims.Repository, "/")) != 2 || !strings.HasPrefix(claims.Ref, "refs/") {
 		return fail()
 	}
 	prefix := claims.Repository + "/.github/workflows/"
