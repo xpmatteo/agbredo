@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-14T12:22:56Z",
+  "description": "Matt decided: we want reusable workflows; trust rests on GitHub auth and the App connection. Remove the job_workflow_ref != workflow_ref rejection in internal/auth/oidc.go:155-159 and update its test. Trust model change, agreed in principle; confirm details.",
+  "id": "ag-s99.1",
+  "labels": [],
+  "parent": "ag-s99",
+  "priority": 2,
+  "status": "open",
+  "title": "Allow reusable workflows in the OIDC check",
+  "type": "task",
+  "updated_at": "2026-10-14T12:22:56Z"
+}
