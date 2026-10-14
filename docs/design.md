@@ -2,8 +2,7 @@
 
 The routes are listed in `routes.md`.
 
-Agbredo shows what a fleet of existing GitHub Actions agents did and what they cost. It only receives reports. It does not start workflows, approve actions or write to GitHub.
-
+Agbredo shows what a fleet of existing GitHub Actions agents did and what they cost.
 ## Parts
 
 - **Reporter** (runs in the agent's workflow). Wraps the agent's command, or runs before and after an unchanged step. It sends a `started` and a `finished` report for each source, authenticated with the job's GitHub OIDC token. See `integrations/claude-code/`. `examples/hello-agent/` is a minimal reporter.

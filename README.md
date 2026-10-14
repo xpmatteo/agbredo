@@ -6,7 +6,7 @@ The [reusable reporting integration](integrations/claude-code/README.md) wraps t
 
 The simpler way is [`integrations/claude-code-otlp`](integrations/claude-code-otlp/README.md): one small step before each Claude Code step, and Claude Code sends its own telemetry to Agbredo. It shows usage per step. The wrapper above keeps working.
 
-Agbredo only receives reports. It never dispatches a workflow, approves an action or writes to GitHub. [`docs/design.md`](docs/design.md) describes the design in a page, and [`docs/routes.md`](docs/routes.md) lists every route. [`examples/hello-agent`](examples/hello-agent/) holds pretend agents that report without calling a model.
+[`docs/design.md`](docs/design.md) describes the design in a page, and [`docs/routes.md`](docs/routes.md) lists every route. [`examples/hello-agent`](examples/hello-agent/) holds pretend agents that report without calling a model.
 
 ## Local development
 
