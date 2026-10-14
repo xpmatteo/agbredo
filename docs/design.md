@@ -56,6 +56,6 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 - The threshold only marks a run. It cannot stop an agent.
 - Only jobs written directly in the registered workflow file can report. Reusable workflows are rejected.
 - Telemetry is accepted only as OTLP JSON (`OTEL_EXPORTER_OTLP_PROTOCOL=http/json`), not protobuf.
-- Telemetry that Claude Code sends after GitHub marks the run finished is lost. A job killed before its last export loses the last part of its usage.
+- Telemetry sent after GitHub marks the run finished is refused. Claude Code sends its last export when it exits, which is before the run finishes. A job that is killed before that loses the last part of its usage.
 - Run one server replica.
 - The report URL still says `observations` and stored agents may carry a `mode` field. Both come from an earlier version and are kept so deployed workflows keep working.
