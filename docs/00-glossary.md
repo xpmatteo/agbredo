@@ -12,7 +12,7 @@ The words we use for the domain. Code, database and dashboard should use the sam
 | Run | One GitHub run attempt of a deployment, with its exact version and configuration. | `core.Run`, `runs` table. One per attempt. |
 | Agent | A named role inside a pipeline, e.g. `triage` or `reviewer`. A step in the pipeline's YAML starts it. | Not in code. |
 | Agent run | One execution of an agent inside a run: one Claude Code invocation. A run has zero or more agent runs. | `Run.AgentRuns`, `Report.AgentRun`, `AgentRunUsage`. The wire names stay "source" and "sources": the `source` input, the `source` and `sources` JSON keys, `run_tokens.source`, the `agbredo.source` label. |
-| Observation | Anything that arrives about a run: reporter reports, telemetry, GitHub webhooks and polls. | Split into `core.Report`, `core.Event` and telemetry. The report URL already says `observations`. |
+| Observation | Anything that arrives about a run: reporter reports, telemetry, GitHub webhooks and polls. | Not a type. Each kind keeps its own name: `core.Report` (a reporter report), telemetry (`internal/core/telemetry.go`), webhooks and polls. Reports and status changes become `core.Event`s, the run's history, shown as "Observations" on the run page. The report URL says `observations`. |
 
 ## More terms
 

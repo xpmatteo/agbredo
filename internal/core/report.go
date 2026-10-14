@@ -20,7 +20,7 @@ type ClaudeUsage struct {
 	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
 }
 
-// Report is an allowlist, not a container for Claude output, OTLP payloads,
+// Report is the observation a reporter sends for one agent run. It is an allowlist, not a container for Claude output, OTLP payloads,
 // environment variables or credentials. Costs are estimates of API consumption;
 // subscription billing and remaining subscription quota are not measured here.
 type Report struct {

@@ -11,6 +11,17 @@ Agbredo shows what a fleet of existing GitHub Actions agents did and what they c
 - **PostgreSQL.** The store for the dashboard. Records are JSON documents in `jsonb` columns.
 - **Telemetry store** (optional, OpenObserve on Railway's private network). Keeps the full telemetry for later analysis. Only Agbredo can reach it. See `internal/forward/`.
 
+## Observations
+
+An observation is anything that arrives about a run. There are four kinds:
+
+- **Reports** from the reporter (`core.Report`): a `started` and a `finished` report per agent run.
+- **Telemetry** from Claude Code (OTLP), counted per agent run.
+- **GitHub webhooks** (`workflow_run`), which set the run's status.
+- **Polls** of GitHub for runs that have not finished, which also set the status.
+
+Reports and status changes are kept as the run's history, one `core.Event` each, in the `events` table. The run page shows them under "Observations". Telemetry only updates the run's counts.
+
 ## Flow
 
 1. An agent's workflow runs on its own trigger (schedule, push, manual).
@@ -40,7 +51,7 @@ A run is registered only when a report arrives or a token is requested. Nothing 
 | `runs` | One per workflow run attempt. Keeps a copy of the deployment as it was. A trigger blocks changes to that copy. Totals: estimated cost, tokens, API and rate-limit failures. The GitHub logins of `actor` (who started the run) and `triggering_actor` (who started this attempt), from GitHub when the run is first seen. |
 | `run_tokens` | Hash, run, agent run (column `source`) and expiry of each telemetry token. |
 | `otlp_seen`, `otlp_series` | Hashes of exports already counted, and the last value of each cumulative counter. |
-| `events` | One per report or status change. The ID is stable, which makes retries safe. |
+| `events` | The run's history: one per report or status change. The ID is stable, which makes retries safe. |
 | `webhook_deliveries` | Delivery IDs already handled. |
 
 Costs are whole microdollars. A missing measurement is stored as missing, not as zero.
@@ -66,4 +77,4 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 - Forwarding is best effort. Telemetry dropped while the store is down is not sent again. A repeated export is forwarded again, though it is counted once in PostgreSQL.
 - Retention in the telemetry store is not decided yet.
 - Run one server replica.
-- The report URL still says `observations` and stored agents may carry a `mode` field. Both come from an earlier version and are kept so deployed workflows keep working.
+- Stored deployments may carry a `mode` field. It comes from an earlier version and is kept so old records still load.

@@ -73,6 +73,8 @@ type Run struct {
 	AgentRuns map[string]*AgentRunUsage `json:"sources,omitempty"`
 }
 
+// Event is one entry in a run's history: a report, or a status change seen in a
+// GitHub webhook or poll. Each one comes from an observation (docs/00-glossary.md).
 // Costs are deltas, expressed as integer microdollars. A stable event ID makes retries safe.
 type Event struct {
 	Claude             *Report         `json:"claude,omitempty"`
