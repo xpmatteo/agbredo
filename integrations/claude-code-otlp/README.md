@@ -6,10 +6,10 @@ A small action which lets Claude Code send its OpenTelemetry straight to Agbredo
 
 1. Register the workflow in Agbredo. Set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`.
 2. Give the job `id-token: write`, next to its other permissions.
-3. Copy this directory into the repository. Put the action before each Claude Code step. Give each one its own `source` name. The input is called `source` for backwards compatibility; it names the agent run. Letters, digits, dots, underscores and hyphens are allowed.
+3. Put the action before each Claude Code step. Refer to it in this repository, so there is nothing to copy. Give each one its own `source` name. The input is called `source` for backwards compatibility; it names the agent run. Letters, digits, dots, underscores and hyphens are allowed.
 
 ```yaml
-- uses: ./integrations/claude-code-otlp
+- uses: xpmatteo/agbredo/integrations/claude-code-otlp@main
   with:
     url: ${{ vars.AGBREDO_URL }}
     agent-id: ${{ vars.AGBREDO_AGENT_ID }}
@@ -19,6 +19,8 @@ A small action which lets Claude Code send its OpenTelemetry straight to Agbredo
     claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     prompt: Your existing prompt
 ```
+
+`@main` keeps the action in step with the server, which is deployed from `main`. Workflows in this repository use `./integrations/claude-code-otlp`.
 
 The Claude step stays as it was. The action only sets environment variables for the steps after it. Each agent run shows up on the run page under its `source` name.
 
