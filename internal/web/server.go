@@ -194,7 +194,7 @@ func (s *Server) deployment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {
-	budget, err := parseMoney(r.FormValue("budget"))
+	threshold, err := parseMoney(r.FormValue("budget"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -212,7 +212,7 @@ func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a := core.Deployment{ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, BudgetMicros: budget, Enabled: r.FormValue("enabled") == "on", Revision: revision}
+	a := core.Deployment{ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description")), Owner: strings.TrimSpace(r.FormValue("owner")), Repository: strings.TrimSpace(r.FormValue("repository")), Workflow: strings.TrimSpace(r.FormValue("workflow")), Ref: strings.TrimSpace(r.FormValue("ref")), InstallationID: installation, ThresholdMicros: threshold, Enabled: r.FormValue("enabled") == "on", Revision: revision}
 	if err := core.ValidateDeployment(a); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -260,7 +260,7 @@ func money(micros int64) string { return fmt.Sprintf("%d.%06d", micros/1_000_000
 
 // Parse decimal dollars as integer microdollars, without floating-point rounding.
 func parseMoney(raw string) (int64, error) {
-	invalid := errors.New("Budget must be a non-negative USD amount with at most six decimal places.")
+	invalid := errors.New("Threshold must be a non-negative USD amount with at most six decimal places.")
 	raw = strings.TrimSpace(raw)
 	parts := strings.Split(raw, ".")
 	if len(parts) > 2 || parts[0] == "" {

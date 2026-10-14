@@ -20,7 +20,7 @@ The words we use for the domain. Code, database and dashboard should use the sam
 | --- | --- | --- |
 | Attempt | GitHub's word. "Re-run jobs" keeps the GitHub run ID and adds 1 to `run_attempt`. Each attempt is its own Run. The dashboard may group attempts that share a GitHub run ID, but that group has no domain name. | `Run.RunAttempt`, `Run.GitHubRunID`. |
 | Configuration | What a run ran with: trigger event, ref, threshold at the time, and the Claude Code version, model and effort. | Threshold is copied into the run. Claude Code version is stored. Trigger event, model and effort are not. |
-| Threshold | Estimated cost per run above which a run is flagged. It does not stop anything. | `BudgetMicros`, `OverBudget`. |
+| Threshold | Estimated cost per run above which a run is flagged. It does not stop anything. | `ThresholdMicros`, `OverThreshold`. |
 | Estimated cost | Cost of the tokens at API prices. Not the subscription charge. | `CostMicros`. |
 | Escalation | An agent run hands work to a person, usually by opening a GitHub issue or PR. | Not in code. |
 | Central repository | A repository that holds pipelines. | Not in code. |

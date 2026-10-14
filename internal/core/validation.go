@@ -34,8 +34,8 @@ func ValidateDeployment(a Deployment) error {
 	if a.InstallationID <= 0 {
 		return fmt.Errorf("GitHub App installation ID must be positive")
 	}
-	if a.BudgetMicros < 0 || a.BudgetMicros > 1_000_000_000_000 {
-		return fmt.Errorf("budget must be between $0 and $1,000,000")
+	if a.ThresholdMicros < 0 || a.ThresholdMicros > 1_000_000_000_000 {
+		return fmt.Errorf("threshold must be between $0 and $1,000,000")
 	}
 	return nil
 }

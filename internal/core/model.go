@@ -31,17 +31,17 @@ func ID() string {
 }
 
 type Deployment struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Description    string `json:"description"`
-	Owner          string `json:"owner"`
-	Repository     string `json:"repository"`
-	Workflow       string `json:"workflow"`
-	Ref            string `json:"ref"`
-	InstallationID int64  `json:"installation_id"`
-	BudgetMicros   int64  `json:"budget_micros"`
-	Enabled        bool   `json:"enabled"`
-	Revision       int64  `json:"version"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Description     string `json:"description"`
+	Owner           string `json:"owner"`
+	Repository      string `json:"repository"`
+	Workflow        string `json:"workflow"`
+	Ref             string `json:"ref"`
+	InstallationID  int64  `json:"installation_id"`
+	ThresholdMicros int64  `json:"budget_micros"`
+	Enabled         bool   `json:"enabled"`
+	Revision        int64  `json:"version"`
 }
 
 type Run struct {
@@ -54,11 +54,11 @@ type Run struct {
 	CorrelationID          string       `json:"correlation_id"`
 	Deployment             Deployment   `json:"agent"`
 	Status                 string       `json:"status"`
-	BudgetMicros           int64        `json:"budget_micros"`
+	ThresholdMicros        int64        `json:"budget_micros"`
 	CostMicros             int64        `json:"cost_micros"`
 	InputTokens            int64        `json:"input_tokens"`
 	OutputTokens           int64        `json:"output_tokens"`
-	OverBudget             bool         `json:"over_budget"`
+	OverThreshold          bool         `json:"over_budget"`
 	GitHubRunID            int64        `json:"github_run_id"`
 	GitHubURL              string       `json:"github_url"`
 	// GitHub logins, from GitHub when the run is first seen. Older runs have none.

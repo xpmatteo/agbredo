@@ -124,7 +124,7 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i
 		return r, gh, err
 	}
 	if r.ID == "" {
-		r = Run{ID: id, CorrelationID: id, Deployment: a, RunAttempt: i.RunAttempt, Status: "running", BudgetMicros: a.BudgetMicros, CreatedAt: now(), UpdatedAt: now()}
+		r = Run{ID: id, CorrelationID: id, Deployment: a, RunAttempt: i.RunAttempt, Status: "running", ThresholdMicros: a.ThresholdMicros, CreatedAt: now(), UpdatedAt: now()}
 		r.GitHubRunID = i.RunID
 		r.Actor, r.TriggeringActor = gh.Actor, gh.TriggeringActor
 		r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, i.RunID)
@@ -212,7 +212,7 @@ func (s *Service) Report(ctx context.Context, deploymentID string, o Report, i I
 			addMeasured(&r.ClaudeUsage.CacheReadTokens, o.Usage.CacheReadTokens)
 			addMeasured(&r.ClaudeUsage.CacheCreationTokens, o.Usage.CacheCreationTokens)
 		}
-		r.OverBudget = r.CostMicros > r.BudgetMicros // advisory; cannot interrupt a subscription agent
+		r.OverThreshold = r.CostMicros > r.ThresholdMicros // advisory; cannot interrupt a subscription agent
 	}
 	// The workflow can contain other steps; its lifecycle remains separate from
 	// each Claude process report. A successful process does not finish the workflow.
