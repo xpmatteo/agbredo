@@ -33,6 +33,8 @@ GitHub runner: existing secret → existing Claude Code command
 
 `command` may also contain the unchanged `claude -p ...` invocation. It runs under `bash -e -o pipefail`, with inherited stdin, stdout and stderr. Preserve any flags, prompt handling and working directory requirements in the command. Linux/macOS runners with Python 3 are supported; the action does not install or upgrade Claude Code. Do not add `--bare`: the verified version does not read the subscription OAuth environment variable in bare mode. No API key or alternative provider is introduced.
 
+The `source` input name is kept for backwards compatibility; it names the agent run.
+
 Use a distinct stable `source` for every execution step, job and matrix cell in a workflow attempt; for example `review-linux` and `review-macos`. Only letters, digits, dots, underscores and hyphens are accepted. Each source sends one `started` and one `finished` observation. Repeating the same source within an attempt will be deduplicated; use separate source names for separate invocations.
 
 For an existing `run:` step where retaining its shell configuration is useful, copy the script and wrap the command directly instead:

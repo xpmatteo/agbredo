@@ -5,7 +5,7 @@ The routes are listed in `20-routes.md`.
 Agbredo shows what a fleet of existing GitHub Actions agents did and what they cost.
 ## Parts
 
-- **Reporter** (runs in the agent's workflow). Wraps the agent's command, or runs before and after an unchanged step. It sends a `started` and a `finished` report for each source, authenticated with the job's GitHub OIDC token. See `integrations/claude-code/`. `examples/hello-agent/` is a minimal reporter.
+- **Reporter** (runs in the agent's workflow). Wraps the agent's command, or runs before and after an unchanged step. It sends a `started` and a `finished` report for each agent run, authenticated with the job's GitHub OIDC token. See `integrations/claude-code/`. `examples/hello-agent/` is a minimal reporter.
 - **Telemetry step** (runs in the agent's workflow, before each Claude Code step). Gets a token from the server with the job's OIDC token, then points Claude Code's own OpenTelemetry export at the server. No wrapper or sidecar. See `integrations/claude-code-otlp/`.
 - **Server** (Go, one process). Serves the dashboard, takes reports and GitHub webhooks, and polls GitHub every 30 seconds for runs that have not finished.
 - **PostgreSQL.** The store for the dashboard. Records are JSON documents in `jsonb` columns.
@@ -21,12 +21,12 @@ Agbredo shows what a fleet of existing GitHub Actions agents did and what they c
 
 ### Telemetry flow
 
-1. The telemetry step posts to `POST /api/agents/{id}/otlp-token` with the OIDC token and a `source` name. The server runs the checks in step 3 above, creates the run if it is new, and returns a random token. The token is valid for 6 hours or until the run finishes. Only its hash is stored. It is tied to one run attempt and one source.
+1. The telemetry step posts to `POST /api/agents/{id}/otlp-token` with the OIDC token and a `source` name (the name of the agent run). The server runs the checks in step 3 above, creates the run if it is new, and returns a random token. The token is valid for 6 hours or until the run finishes. Only its hash is stored. It is tied to one run attempt and one agent run.
 2. The step puts the token in the environment as `OTEL_EXPORTER_OTLP_HEADERS`. Claude Code then posts OTLP as JSON to `/v1/metrics`, `/v1/logs` and `/v1/traces`. The step also sets `TRACEPARENT` from the token reply. Its trace ID comes from the run ID, so all Claude Code steps of a run attempt share one trace. Traces are a Claude Code beta (`CLAUDE_CODE_ENHANCED_TELEMETRY_BETA`).
-3. The token alone says which run and which source the data belongs to. The server does not read that from the payload.
+3. The token alone says which run and which agent run the data belongs to. The server does not read that from the payload.
 4. In PostgreSQL the server keeps only token counts (input, output, cache read, cache creation), the cost estimate, the Claude Code version, and counts of API errors and rate-limit errors. Nothing is counted from traces. It never logs the payload.
 5. If `OTLP_FORWARD_URL` is set, the server forwards each accepted payload, unchanged except for added resource attributes: `agbredo.agent.id`, `agbredo.agent.name`, `agbredo.run.id`, `agbredo.source`, `github.repository`, `github.workflow`, `github.run_id`, `github.run_attempt`, `github.run_url`, `github.actor`, `github.triggering_actor`. They come from the token and the run, not from the agent. Attributes starting with `agbredo.` or `github.` that the agent sent are removed. Forwarding runs in the background. If the store is slow or down, the telemetry is dropped and a warning is logged. The agent's request never fails because of it.
-6. Delta and cumulative counters are both handled. A repeated export is counted once. A counter that goes down is ignored. Counts are kept per source on the run (`sources`), and added to the run totals.
+6. Delta and cumulative counters are both handled. A repeated export is counted once. A counter that goes down is ignored. Counts are kept per agent run on the run (`sources`), and added to the run totals.
 
 This path and the reports above can be used together or alone. Run status always comes from GitHub, never from telemetry.
 
@@ -38,7 +38,7 @@ A run is registered only when a report arrives or a token is requested. Nothing 
 | --- | --- |
 | `agents` | Registered workflow: repository, workflow file, ref, App installation, estimate threshold. Has an edit revision. Deleting hides it. |
 | `runs` | One per workflow run attempt. Keeps a copy of the deployment as it was. A trigger blocks changes to that copy. Totals: estimated cost, tokens, API and rate-limit failures. The GitHub logins of `actor` (who started the run) and `triggering_actor` (who started this attempt), from GitHub when the run is first seen. |
-| `run_tokens` | Hash, run, source and expiry of each telemetry token. |
+| `run_tokens` | Hash, run, agent run (column `source`) and expiry of each telemetry token. |
 | `otlp_seen`, `otlp_series` | Hashes of exports already counted, and the last value of each cumulative counter. |
 | `events` | One per report or status change. The ID is stable, which makes retries safe. |
 | `webhook_deliveries` | Delivery IDs already handled. |
@@ -51,7 +51,7 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 - **Runners:** only the short-lived OIDC token. No shared secret.
 - **Reusable workflows:** accepted. A caller workflow in the target repository may call a pipeline (a reusable workflow) in any central repository. There is no list of allowed central repositories. Trust rests on GitHub. The OIDC token, signed by GitHub, says which repository and caller workflow ran. The server then checks the run with GitHub through the GitHub App, so only registered deployments, in repositories where the App is installed, can report. The identity is always the caller workflow, taken from the `workflow_ref` claim. The pipeline's `job_workflow_ref` claim is never used to decide who is reporting.
 - **Webhooks:** HMAC signature with the App's webhook secret.
-- **Telemetry tokens:** random, per run attempt and per source, 6 hours at most, refused once the run has finished. The agent's own process can read its token. With it, it can only send telemetry for its own run.
+- **Telemetry tokens:** random, per run attempt and per agent run, 6 hours at most, refused once the run has finished. The agent's own process can read its token. With it, it can only send telemetry for its own run.
 - **Claude credentials:** never seen by the server. A report is a fixed list of fields (counts, exit code, version). It carries no prompts, output or environment. Telemetry arrives as raw OTLP over HTTPS. The server keeps only the fields listed above in PostgreSQL, and forwards the rest to the telemetry store if one is set. The telemetry step turns off prompt, response and tool logging. It turns on the Claude account fields (`user.account_uuid`, along with `user.email` and `organization.id` which Claude Code always sends), so the store records which Claude account did the work.
 - **Telemetry store:** on the private network only. Agbredo logs in with Basic auth (`OTLP_AUTH_TOKEN`). Runners never get its credentials.
 

@@ -68,8 +68,9 @@ type Run struct {
 	TriggeringActor string    `json:"triggering_actor,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
-	// Per Claude Code step, from telemetry sent straight to Agbredo. The totals above include these.
-	Sources map[string]*SourceUsage `json:"sources,omitempty"`
+	// Per agent run, from telemetry sent straight to Agbredo. The totals above include these.
+	// The JSON key "sources" is kept on purpose: stored rows and clients use it.
+	AgentRuns map[string]*AgentRunUsage `json:"sources,omitempty"`
 }
 
 // Costs are deltas, expressed as integer microdollars. A stable event ID makes retries safe.
