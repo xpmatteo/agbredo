@@ -13,11 +13,15 @@
     {
       "text": "2026-10-14: recommended answers posted to Matt in the project thread; awaiting his decision before code.",
       "timestamp": "2026-10-14T14:32:07Z"
+    },
+    {
+      "text": "2026-10-14, Matt decided: store both job_workflow_ref and job_workflow_sha on the run (JSON document, no migration). Non-reusable workflow: leave pipeline missing. Show pipeline + version on the run page AND on the deployment page (which version ran).",
+      "timestamp": "2026-10-14T14:46:19Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Store pipeline and version on each run",
   "type": "task",
-  "updated_at": "2026-10-14T14:32:07Z"
+  "updated_at": "2026-10-14T14:46:19Z"
 }
