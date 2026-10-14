@@ -26,6 +26,7 @@ type Service interface {
 	SaveDeployment(context.Context, core.Deployment) (core.Deployment, error)
 	DeleteDeployment(context.Context, string) error
 	Run(context.Context, string) (core.Run, error)
+	RecentRuns(ctx context.Context, deploymentID string, limit int) ([]core.Run, error)
 	Events(context.Context, string) ([]core.Event, error)
 }
 
@@ -49,6 +50,8 @@ type page struct {
 	Deployment     core.Deployment
 	Run            core.Run
 	Events         []core.Event
+	Versions       []core.PipelineUse
+	RecentRuns     int
 	Active, Failed int
 	Spending       int64
 	Error          string
@@ -74,6 +77,7 @@ func New(service Service, auth Auth) *Server {
 		"agentRunTokens": func(u *core.AgentRunUsage, kind string) string {
 			return usageTokens(u.Usage, kind)
 		},
+		"usageTokens": usageTokens,
 		"date": func(t time.Time) string {
 			if t.IsZero() {
 				return "—"
@@ -180,13 +184,22 @@ func (s *Server) deployments(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "agents", page{Title: "Deployments", Fleet: f, Deployment: core.Deployment{Enabled: true}})
 }
 
+// recentRuns is how many of its newest runs the deployment page reads to show
+// which pipeline versions ran.
+const recentRuns = 20
+
 func (s *Server) deployment(w http.ResponseWriter, r *http.Request) {
 	a, err := s.service.Deployment(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "agent", page{Title: a.Name, Deployment: a})
+	runs, err := s.service.RecentRuns(r.Context(), a.ID, recentRuns)
+	if err != nil {
+		s.failure(w, err)
+		return
+	}
+	s.render(w, r, "agent", page{Title: a.Name, Deployment: a, Versions: core.PipelineVersions(runs), RecentRuns: recentRuns})
 }
 
 func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {

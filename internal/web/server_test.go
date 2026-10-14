@@ -26,6 +26,7 @@ func (a testAuth) CheckCSRF(r *http.Request) bool {
 type testService struct {
 	deployment core.Deployment
 	run        core.Run
+	recent     []core.Run
 	events     []core.Event
 	saved      core.Deployment
 	saveErr    error
@@ -42,8 +43,11 @@ func (s *testService) SaveDeployment(_ context.Context, a core.Deployment) (core
 	a.ID = "agent-1"
 	return a, s.saveErr
 }
-func (s *testService) DeleteDeployment(context.Context, string) error       { return nil }
-func (s *testService) Run(context.Context, string) (core.Run, error)        { return s.run, nil }
+func (s *testService) DeleteDeployment(context.Context, string) error { return nil }
+func (s *testService) Run(context.Context, string) (core.Run, error)  { return s.run, nil }
+func (s *testService) RecentRuns(context.Context, string, int) ([]core.Run, error) {
+	return s.recent, nil
+}
 func (s *testService) Events(context.Context, string) ([]core.Event, error) { return s.events, nil }
 
 func serve(service *testService, auth testAuth, method, path string, form url.Values) *httptest.ResponseRecorder {
@@ -244,5 +248,76 @@ func TestSaveDeploymentRevisionField(t *testing.T) {
 		if w.Code != http.StatusBadRequest || s.saved.Revision != 0 {
 			t.Fatalf("version %q: status = %d", bad, w.Code)
 		}
+	}
+}
+
+// The run page shows the pipeline and its version: the ref and a short SHA
+// linked to the pipeline's file at that commit. Missing stays missing.
+func TestRunPageShowsPipelineVersion(t *testing.T) {
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	run := core.Run{ID: "run-1", Pipeline: &core.Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "refs/tags/v1", SHA: sha}}
+	body := serve(&testService{run: run}, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+	for _, want := range []string{
+		`<dt>Pipeline</dt><dd class="mono">org/agents/.github/workflows/triage.yml</dd>`,
+		`<dt>Pipeline version</dt><dd class="mono">refs/tags/v1 · <a href="https://github.com/org/agents/blob/` + sha + `/.github/workflows/triage.yml"`,
+		`>0123456</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("want %s in %s", want, body)
+		}
+	}
+	body = serve(&testService{run: core.Run{ID: "run-1"}}, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+	if !strings.Contains(body, `<dt>Pipeline</dt><dd class="mono">Unavailable</dd><dt>Pipeline version</dt><dd class="mono">Unavailable</dd>`) {
+		t.Fatalf("missing pipeline not shown as Unavailable: %s", body)
+	}
+}
+
+// The deployment page shows which pipeline versions its recent runs used.
+func TestDeploymentPageShowsPipelineVersions(t *testing.T) {
+	v1 := &core.Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "refs/tags/v1"}
+	s := &testService{deployment: core.Deployment{ID: "agent-1"}, recent: []core.Run{{ID: "new", Pipeline: v1}, {ID: "old"}, {ID: "older", Pipeline: v1}}}
+	body := serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil).Body.String()
+	for _, want := range []string{"Pipeline versions", `<td class="mono">org/agents/.github/workflows/triage.yml</td><td class="mono">refs/tags/v1</td><td>2</td><td><a href="/runs/new">`, `<td>Unavailable</td><td>1</td><td><a href="/runs/old">`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("want %s in %s", want, body)
+		}
+	}
+	s.recent = nil
+	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil).Body.String(); !strings.Contains(body, "No runs yet.") {
+		t.Fatalf("no runs: %s", body)
+	}
+}
+
+// The run page shows the trigger event, and the models and effort levels of
+// each agent run. Older runs without them show them as missing.
+func TestRunPageShowsConfiguration(t *testing.T) {
+	in, out := int64(1200), int64(80)
+	s := &testService{run: core.Run{ID: "run-1", TriggerEvent: "schedule", AgentRuns: map[string]*core.AgentRunUsage{
+		"review": {Models: map[string]*core.ClaudeUsage{"claude-sonnet-4-5": {InputTokens: &in, OutputTokens: &out}, "claude-haiku-4-5": {}}, Efforts: []string{"low", "high"}},
+		"old":    {},
+	}}}
+	body := serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+	if !strings.Contains(body, `<dt>Trigger event</dt><dd class="mono">schedule</dd>`) || !strings.Contains(body, "<th>Models</th><th>Effort</th>") {
+		t.Fatalf("configuration missing: %s", body)
+	}
+	review := body[strings.Index(body, ">review<"):]
+	review = review[:strings.Index(review, "</tr>")]
+	for _, want := range []string{
+		`<span class="mono">claude-haiku-4-5</span><small>Input / output: Unavailable / Unavailable`,
+		`<span class="mono">claude-sonnet-4-5</span><small>Input / output: 1200 / 80<br>Cache read / creation: Unavailable / Unavailable</small>`,
+		`<td>low, high</td>`,
+	} {
+		if !strings.Contains(review, want) {
+			t.Fatalf("want %s in %s", want, review)
+		}
+	}
+	old := body[strings.Index(body, ">old<"):]
+	old = old[:strings.Index(old, "</tr>")]
+	if !strings.Contains(old, "<td>Unavailable</td><td>Unavailable</td><td>Unavailable</td>") {
+		t.Fatalf("older agent run: %s", old)
+	}
+	s.run.TriggerEvent = ""
+	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(); !strings.Contains(body, `<dt>Trigger event</dt><dd class="mono">Unavailable</dd>`) {
+		t.Fatalf("older run: %s", body)
 	}
 }

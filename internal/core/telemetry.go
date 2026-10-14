@@ -1,11 +1,13 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,11 +18,67 @@ const TokenLifetime = 6 * time.Hour
 // AgentRunUsage is what one agent run used. Cost is kept in nanodollars
 // so that many small exports add up without drifting; it is shown as micros.
 type AgentRunUsage struct {
-	Version           string       `json:"version,omitempty"`
+	Version string `json:"version,omitempty"`
+	// Models seen, from the model attribute of the token and cost counters,
+	// with the tokens each used. Older agent runs have none.
+	Models map[string]*ClaudeUsage `json:"models,omitempty"`
+	// Efforts are the effort levels seen, lowest first, from the effort
+	// attribute of the token and cost counters and of claude_code.llm_request
+	// spans. Missing when Claude Code reports none.
+	Efforts           []string     `json:"efforts,omitempty"`
 	Usage             *ClaudeUsage `json:"usage,omitempty"`
 	CostNanos         *int64       `json:"cost_nanos,omitempty"`
 	APIErrors         int64        `json:"api_errors,omitempty"`
 	RateLimitFailures int64        `json:"rate_limit_failures,omitempty"`
+}
+
+// An agent run keeps at most this many models and effort levels. Telemetry
+// comes from the agent, so it cannot grow a run without bound. Tokens of
+// further models still count in the agent run's and the run's totals.
+const (
+	maxModels  = 16
+	maxEfforts = 8
+)
+
+// model is the usage of a model, which is added if it is new and there is room.
+// It is nil for no model, or when there is no room.
+func (u *AgentRunUsage) model(name string) *ClaudeUsage {
+	if name == "" {
+		return nil
+	}
+	if m := u.Models[name]; m != nil {
+		return m
+	}
+	if len(u.Models) >= maxModels {
+		return nil
+	}
+	if u.Models == nil {
+		u.Models = map[string]*ClaudeUsage{}
+	}
+	u.Models[name] = &ClaudeUsage{}
+	return u.Models[name]
+}
+
+// effortRank orders the known effort levels; others come after them.
+var effortRank = map[string]int{"low": 1, "medium": 2, "high": 3, "xhigh": 4, "max": 5}
+
+// addEffort records an effort level once. Seeing it again changes nothing, so
+// a repeated export does no harm.
+func (u *AgentRunUsage) addEffort(e string) {
+	if e == "" || slices.Contains(u.Efforts, e) || len(u.Efforts) >= maxEfforts {
+		return
+	}
+	u.Efforts = append(u.Efforts, e)
+	slices.SortFunc(u.Efforts, func(a, b string) int {
+		ra, rb := effortRank[a], effortRank[b]
+		if ra == 0 {
+			ra = len(effortRank) + 1
+		}
+		if rb == 0 {
+			rb = len(effortRank) + 1
+		}
+		return cmp.Or(cmp.Compare(ra, rb), cmp.Compare(a, b))
+	})
 }
 
 func (u AgentRunUsage) CostMicros() int64 {
@@ -138,10 +196,21 @@ func (s *Service) IngestLogs(ctx context.Context, token string, body []byte) (Te
 	})
 }
 
-// IngestTraces only checks the token. Agbredo counts nothing from traces;
-// they are forwarded when a store is configured.
-func (s *Service) IngestTraces(ctx context.Context, token string, _ []byte) (TelemetryOrigin, error) {
-	return s.ingest(ctx, token, func(pgx.Tx, *Run, string) error { return nil })
+// IngestTraces reads one thing from traces: the effort levels of the
+// claude_code.llm_request spans. Traces are forwarded whole when a store is
+// configured. A repeated export only sees the same levels again.
+func (s *Service) IngestTraces(ctx context.Context, token string, body []byte) (TelemetryOrigin, error) {
+	return s.ingest(ctx, token, func(_ pgx.Tx, r *Run, agentRun string) error {
+		efforts, err := parseTraces(body)
+		if err != nil || len(efforts) == 0 {
+			return err
+		}
+		u := agentRunUsage(r, agentRun)
+		for _, e := range efforts {
+			u.addEffort(e)
+		}
+		return nil
+	})
 }
 
 func (s *Service) ingest(ctx context.Context, token string, apply func(pgx.Tx, *Run, string) error) (TelemetryOrigin, error) {
@@ -198,6 +267,9 @@ func applyMetrics(ctx context.Context, tx pgx.Tx, r *Run, agentRun string, sampl
 		u.Version = version
 	}
 	for _, m := range samples {
+		// Seeing a model or an effort level again changes nothing.
+		u.model(m.Model)
+		u.addEffort(m.Effort)
 		fresh, err := markSeen(ctx, tx, r.ID, agentRun, m.Key)
 		if err != nil {
 			return err
@@ -222,12 +294,12 @@ func applyMetrics(ctx context.Context, tx pgx.Tx, r *Run, agentRun string, sampl
 			}
 			amount -= lastValue
 		}
-		addUsage(r, u, m.Field, amount)
+		addUsage(r, u, m.Model, m.Field, amount)
 	}
 	return nil
 }
 
-func addUsage(r *Run, u *AgentRunUsage, field string, amount float64) {
+func addUsage(r *Run, u *AgentRunUsage, model, field string, amount float64) {
 	if field == "cost" {
 		before := u.CostMicros()
 		if u.CostNanos == nil {
@@ -249,18 +321,28 @@ func addUsage(r *Run, u *AgentRunUsage, field string, amount float64) {
 	switch field {
 	case "input":
 		r.InputTokens += n
-		addMeasured(&u.Usage.InputTokens, &n)
-		addMeasured(&r.ClaudeUsage.InputTokens, &n)
 	case "output":
 		r.OutputTokens += n
-		addMeasured(&u.Usage.OutputTokens, &n)
-		addMeasured(&r.ClaudeUsage.OutputTokens, &n)
+	}
+	// The agent run, the run, and the model if it is known and kept.
+	for _, c := range []*ClaudeUsage{u.Usage, r.ClaudeUsage, u.model(model)} {
+		if c != nil {
+			addMeasured(c.tokens(field), &n)
+		}
+	}
+}
+
+// tokens is the counter of one kind of tokens: input, output, cacheRead or cacheCreation.
+func (c *ClaudeUsage) tokens(kind string) **int64 {
+	switch kind {
+	case "input":
+		return &c.InputTokens
+	case "output":
+		return &c.OutputTokens
 	case "cacheRead":
-		addMeasured(&u.Usage.CacheReadTokens, &n)
-		addMeasured(&r.ClaudeUsage.CacheReadTokens, &n)
-	case "cacheCreation":
-		addMeasured(&u.Usage.CacheCreationTokens, &n)
-		addMeasured(&r.ClaudeUsage.CacheCreationTokens, &n)
+		return &c.CacheReadTokens
+	default:
+		return &c.CacheCreationTokens
 	}
 }
 

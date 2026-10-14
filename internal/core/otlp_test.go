@@ -96,3 +96,63 @@ func TestParseLogs(t *testing.T) {
 		t.Error("invalid JSON accepted")
 	}
 }
+
+// Claude Code puts model and effort on the token and cost counters. They are
+// kept only if they have the form of a model or an effort level.
+func TestParseMetricsReadsModelAndEffort(t *testing.T) {
+	for _, tc := range []struct {
+		model, effort         string
+		wantModel, wantEffort string
+	}{
+		{"claude-sonnet-4-5-20250929", "high", "claude-sonnet-4-5-20250929", "high"},
+		{"us.anthropic.claude-sonnet-4-5-20250929-v1:0", "xhigh", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "xhigh"},
+		{"claude-sonnet-4-5@20250929", "max", "claude-sonnet-4-5@20250929", "max"},
+		{"has spaces", "High", "", ""},
+		{"<script>", "a-b", "", ""},
+		{"", "", "", ""},
+	} {
+		attrs := typeInput
+		if tc.model != "" {
+			attrs += `,` + str("model", tc.model)
+		}
+		if tc.effort != "" {
+			attrs += `,` + str("effort", tc.effort)
+		}
+		samples, _, err := parseMetrics(metricsPayload("claude_code.token.usage", 1, "true", attrs, "1", "2", `"asInt":"5"`))
+		if err != nil || len(samples) != 1 || samples[0].Model != tc.wantModel || samples[0].Effort != tc.wantEffort {
+			t.Errorf("%q %q: %+v %v", tc.model, tc.effort, samples, err)
+		}
+	}
+	// Each model is its own counter.
+	a, _, _ := parseMetrics(metricsPayload("claude_code.token.usage", 2, "true", typeInput+`,`+str("model", "claude-a"), "1", "2", `"asInt":"5"`))
+	b, _, _ := parseMetrics(metricsPayload("claude_code.token.usage", 2, "true", typeInput+`,`+str("model", "claude-b"), "1", "2", `"asInt":"5"`))
+	if a[0].Series == b[0].Series || a[0].Key == b[0].Key {
+		t.Error("two models must be two counters")
+	}
+}
+
+func tracesPayload(spans string) []byte {
+	return []byte(`{"resourceSpans":[{"resource":{},"scopeSpans":[{"scope":{},"spans":[` + spans + `]}]}]}`)
+}
+func span(name, attrs string) string {
+	return `{"traceId":"5b8efff798038103d269b633813fc60c","spanId":"eee19b7ec3c1b174","name":"` + name + `","attributes":[` + attrs + `]}`
+}
+
+func TestParseTracesReadsOnlyEffortOfLLMRequests(t *testing.T) {
+	efforts, err := parseTraces(tracesPayload(
+		span("claude_code.llm_request", str("effort", "high")+`,`+str("model", "claude-x")) + `,` +
+			span("claude_code.llm_request", str("effort", "low")) + `,` +
+			span("claude_code.llm_request", str("model", "claude-x")) + `,` +
+			span("claude_code.llm_request", str("effort", "NOT A LEVEL")) + `,` +
+			span("claude_code.tool", str("effort", "max")) + `,` +
+			span("claude_code.interaction", str("user_prompt", "secret"))))
+	if err != nil || len(efforts) != 2 || efforts[0] != "high" || efforts[1] != "low" {
+		t.Fatalf("%v %v", efforts, err)
+	}
+	if efforts, err = parseTraces([]byte(`{"resourceSpans":[]}`)); err != nil || efforts != nil {
+		t.Fatalf("empty: %v %v", efforts, err)
+	}
+	if _, err = parseTraces([]byte(`{`)); err == nil {
+		t.Error("invalid JSON accepted")
+	}
+}

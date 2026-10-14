@@ -33,9 +33,11 @@ type runnerClaims struct {
 	jwt.RegisteredClaims
 	Repository  string `json:"repository"`
 	WorkflowRef string `json:"workflow_ref"`
-	// JobWorkflowRef names the pipeline (reusable workflow) that ran. It is parsed
-	// so the pipeline can be recorded later (ag-s99.2). Never use it for identity.
+	// JobWorkflowRef and JobWorkflowSHA name the pipeline (reusable workflow)
+	// that ran, and its commit. They are recorded on the run, and never used
+	// for identity.
 	JobWorkflowRef string `json:"job_workflow_ref"`
+	JobWorkflowSHA string `json:"job_workflow_sha"`
 	Ref            string `json:"ref"`
 	RunID          string `json:"run_id"`
 	RunAttempt     string `json:"run_attempt"`
@@ -165,5 +167,6 @@ func (o *OIDC) Verify(ctx context.Context, raw string) (core.Identity, error) {
 	if err != nil || attempt <= 0 {
 		return fail()
 	}
-	return core.Identity{EventName: claims.EventName, Repository: claims.Repository, Workflow: workflow, Ref: claims.Ref, RunID: runID, RunAttempt: attempt}, nil
+	return core.Identity{EventName: claims.EventName, Repository: claims.Repository, Workflow: workflow, Ref: claims.Ref, RunID: runID, RunAttempt: attempt,
+		JobWorkflowRef: claims.JobWorkflowRef, JobWorkflowSHA: claims.JobWorkflowSHA}, nil
 }

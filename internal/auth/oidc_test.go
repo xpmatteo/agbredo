@@ -103,12 +103,17 @@ func TestOIDCAuthenticatesOnlyBoundShortLivedWorkflowTokens(t *testing.T) {
 	// workflow_ref (the caller), never from job_workflow_ref (the pipeline).
 	reusable := valid()
 	reusable["job_workflow_ref"] = "org/agbredo-agents/.github/workflows/triage.yml@refs/tags/v1"
+	reusable["job_workflow_sha"] = "0123456789abcdef0123456789abcdef01234567"
 	identity, err = o.Verify(context.Background(), sign(reusable, "key1", jwt.SigningMethodRS256))
 	if err != nil {
 		t.Fatalf("reusable workflow rejected: %v", err)
 	}
 	if identity.Repository != "o/r" || identity.Workflow != "agent.yml" || identity.Ref != "refs/heads/main" {
 		t.Fatalf("identity must come from workflow_ref, got %#v", identity)
+	}
+	// The pipeline is carried along, to be recorded on the run.
+	if identity.JobWorkflowRef != reusable["job_workflow_ref"] || identity.JobWorkflowSHA != reusable["job_workflow_sha"] {
+		t.Fatalf("pipeline claims not carried: %#v", identity)
 	}
 	// A direct job: job_workflow_ref equals workflow_ref, as in real tokens.
 	direct := valid()

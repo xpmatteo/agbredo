@@ -31,8 +31,18 @@ class SendTests(unittest.TestCase):
 
         send.send(env={"OTEL_EXPORTER_OTLP_ENDPOINT": "https://x.example/",
                        "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer agb_1"}, out=io.StringIO(), post=post)
-        self.assertEqual([u for u, _, _ in sent], ["https://x.example/v1/metrics"] * 2 + ["https://x.example/v1/logs"])
+        self.assertEqual([u for u, _, _ in sent], ["https://x.example/v1/metrics"] * 2 + ["https://x.example/v1/logs", "https://x.example/v1/traces"])
         self.assertTrue(all(a == "Bearer agb_1" and c == "application/json" for _, a, c in sent))
+
+    def test_it_reports_model_and_effort_as_claude_code_does(self):
+        payloads = dict(send.otlp_payloads())
+        points = [p for m in payloads["/v1/metrics"]["resourceMetrics"][0]["scopeMetrics"][0]["metrics"] for p in m["sum"]["dataPoints"]]
+        for p in points:
+            attrs = {a["key"]: a["value"]["stringValue"] for a in p["attributes"]}
+            self.assertEqual((attrs["model"], attrs["effort"]), ("pretend-model", "medium"))
+        span = payloads["/v1/traces"]["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
+        self.assertEqual(span["name"], "claude_code.llm_request")
+        self.assertIn({"key": "effort", "value": {"stringValue": "medium"}}, span["attributes"])
 
     def test_the_payload_has_no_prompt_or_identity(self):
         text = json.dumps(send.otlp_payloads())
