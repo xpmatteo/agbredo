@@ -10,9 +10,15 @@
   "id": "ag-s99.1",
   "labels": [],
   "parent": "ag-s99",
+  "comments": [
+    {
+      "text": "Implemented on branch ag-s99.1/reusable-workflows, commit 6239f72. Removed job_workflow_ref rejection; tests and docs updated. Awaiting review; not closed.",
+      "timestamp": "2026-10-14T12:51:16Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Allow reusable workflows in the OIDC check",
   "type": "task",
-  "updated_at": "2026-10-14T12:49:04Z"
+  "updated_at": "2026-10-14T12:51:16Z"
 }
