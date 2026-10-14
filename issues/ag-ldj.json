@@ -2,13 +2,14 @@
   "assignee": "Matteo Vaccari",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-14T12:26:34Z",
   "created": "2026-10-14T12:26:08Z",
   "description": "Rename docs/ files with two-digit prefixes (00-glossary, 01-design, 02-routes) and update references.",
   "id": "ag-ldj",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Number docs files to show reading order",
   "type": "task",
-  "updated_at": "2026-10-14T12:26:22Z"
+  "updated_at": "2026-10-14T12:26:34Z"
 }
