@@ -2,14 +2,15 @@
   "assignee": "Matteo Vaccari",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-14T13:01:54Z",
   "created": "2026-10-14T12:22:59Z",
   "description": "Rename \"source\" to \"agent run\" in Go code and the dashboard, to match docs/00-glossary.md. No design talk needed.\n\nGlossary: an agent is a named role in a pipeline; an agent run is one Claude Code execution of it inside a run. Today that is a \"source\": the source input of integrations/claude-code and integrations/claude-code-otlp, Run.Sources and SourceUsage (internal/core/model.go, telemetry.go), Report.Source, run_tokens.source.\n\nChange Go names and dashboard wording. The run page already says \"Claude Code steps\" and \"Source ...\" in event details (internal/web/templates.html); use \"agent run\".\n\nKeep for backwards compatibility: the action input name source, JSON keys (sources, source), the run_tokens.source column, the agbredo.source OTLP label. Deployed workflows and stored rows depend on these.\n\nCheck: go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./..., plus the Python tests in CLAUDE.md if the integrations change.",
   "id": "ag-s99.7",
   "labels": [],
   "parent": "ag-s99",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Rename source to agent run in code and dashboard",
   "type": "task",
-  "updated_at": "2026-10-14T12:58:21Z"
+  "updated_at": "2026-10-14T13:01:54Z"
 }
