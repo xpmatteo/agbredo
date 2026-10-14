@@ -71,13 +71,13 @@ func New(service Service, auth Auth) *Server {
 			return "$" + money(r.CostMicros)
 		},
 		"runTokens": runTokens,
-		"sourceCost": func(u *core.SourceUsage) string {
+		"agentRunCost": func(u *core.AgentRunUsage) string {
 			if u.CostNanos == nil {
 				return "Unavailable"
 			}
 			return "$" + money(u.CostMicros())
 		},
-		"sourceTokens": func(u *core.SourceUsage, kind string) string {
+		"agentRunTokens": func(u *core.AgentRunUsage, kind string) string {
 			return usageTokens(u.Usage, kind)
 		},
 		"date": func(t time.Time) string {

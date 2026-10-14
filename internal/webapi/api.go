@@ -38,19 +38,20 @@ func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/github/webhook", a.webhook)
 }
 
-// mintToken gives a Claude Code step a token for sending its telemetry here.
+// mintToken gives an agent run a token for sending its telemetry here.
 func (a *API) mintToken(w http.ResponseWriter, r *http.Request) {
 	identity, ok := a.identity(w, r)
 	if !ok {
 		return
 	}
 	var request struct {
-		Source string `json:"source"`
+		// "source" is the wire name of the agent run; kept for deployed workflows.
+		AgentRun string `json:"source"`
 	}
 	if !decode(w, r, &request) {
 		return
 	}
-	token, expires, err := a.Service.MintToken(r.Context(), r.PathValue("id"), request.Source, identity)
+	token, expires, err := a.Service.MintToken(r.Context(), r.PathValue("id"), request.AgentRun, identity)
 	if err != nil {
 		a.failure(w, err)
 		return
@@ -107,7 +108,7 @@ func labels(o core.TelemetryOrigin) map[string]string {
 		"agbredo.agent.id":        r.Deployment.ID,
 		"agbredo.agent.name":      r.Deployment.Name,
 		"agbredo.run.id":          r.ID,
-		"agbredo.source":          o.Source,
+		"agbredo.source":          o.AgentRun,
 		"github.repository":       r.Deployment.Owner + "/" + r.Deployment.Repository,
 		"github.workflow":         r.Deployment.Workflow,
 		"github.run_id":           strconv.FormatInt(r.GitHubRunID, 10),

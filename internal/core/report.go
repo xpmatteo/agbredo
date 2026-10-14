@@ -26,8 +26,8 @@ type ClaudeUsage struct {
 type Report struct {
 	GitHubRunID         int64        `json:"github_run_id"`
 	GitHubRunAttempt    int64        `json:"github_run_attempt"`
-	Source              string       `json:"source"`
-	Phase               string       `json:"phase"` // started or finished; one pair per source and workflow attempt
+	AgentRun            string       `json:"source"` // wire name kept on purpose: deployed workflows send "source"
+	Phase               string       `json:"phase"`  // started or finished; one pair per agent run and workflow attempt
 	Version             string       `json:"version"`
 	ExitCode            *int         `json:"exit_code,omitempty"`
 	ActionOutcome       string       `json:"action_outcome,omitempty"` // SDK action outcome; never fabricate a CLI exit code
@@ -44,8 +44,8 @@ type Report struct {
 var claudeVersion = regexp.MustCompile(`^(unknown|[0-9]+\.[0-9]+\.[0-9]+)$`)
 
 func (o Report) validate() error {
-	if !slug.MatchString(o.Source) || len(o.Source) > 80 || !claudeVersion.MatchString(o.Version) || len(o.Version) > 40 {
-		return invalid("provide a stable reporting source and Claude Code version")
+	if !slug.MatchString(o.AgentRun) || len(o.AgentRun) > 80 || !claudeVersion.MatchString(o.Version) || len(o.Version) > 40 {
+		return invalid("provide a stable reporting agent run and Claude Code version")
 	}
 	if o.DurationMS < 0 || o.APIErrors < 0 || o.APIErrors > 1_000_000 || o.RateLimitFailures < 0 || o.RateLimitFailures > o.APIErrors {
 		return invalid("invalid duration or API failure counts")
@@ -175,7 +175,7 @@ func (s *Service) Report(ctx context.Context, deploymentID string, o Report, i I
 			status = "skipped"
 		}
 	}
-	e := Event{ID: fmt.Sprintf("github:%d:%d:%s:%s", i.RunID, i.RunAttempt, o.Source, o.Phase), RunID: id, CorrelationID: id, DeploymentID: r.Deployment.ID, DeploymentRevision: r.Deployment.Revision, Timestamp: now(), Type: "claude.execution", Status: status, DurationMS: o.DurationMS, Claude: &o, Message: "Claude Code execution report; consumption is an API-equivalent estimate, subscription charges are unknown"}
+	e := Event{ID: fmt.Sprintf("github:%d:%d:%s:%s", i.RunID, i.RunAttempt, o.AgentRun, o.Phase), RunID: id, CorrelationID: id, DeploymentID: r.Deployment.ID, DeploymentRevision: r.Deployment.Revision, Timestamp: now(), Type: "claude.execution", Status: status, DurationMS: o.DurationMS, Claude: &o, Message: "Claude Code execution report; consumption is an API-equivalent estimate, subscription charges are unknown"}
 	if o.EstimatedCostMicros != nil {
 		e.CostMicros = *o.EstimatedCostMicros
 	}

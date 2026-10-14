@@ -155,7 +155,7 @@ func TestDatabaseWebhookAndReconciliation(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
 	a, i := reportDeployment(t, s, f)
-	r, _, err := s.Report(ctx, a.ID, Report{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "job", Phase: "started", Version: "unknown"}, i)
+	r, _, err := s.Report(ctx, a.ID, Report{GitHubRunID: 777, GitHubRunAttempt: 1, AgentRun: "job", Phase: "started", Version: "unknown"}, i)
 	if err != nil {
 		t.Fatal(err)
 	}

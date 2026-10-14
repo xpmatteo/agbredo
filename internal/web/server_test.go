@@ -161,12 +161,12 @@ func TestOversizedForm(t *testing.T) {
 
 func TestRunPageShowsEachClaudeStepAndKeepsMissingValuesMissing(t *testing.T) {
 	n := int64(1200)
-	s := &testService{run: core.Run{ID: "run-1", Sources: map[string]*core.SourceUsage{
+	s := &testService{run: core.Run{ID: "run-1", AgentRuns: map[string]*core.AgentRunUsage{
 		"review": {Version: "2.1.296", Usage: &core.ClaudeUsage{InputTokens: &n}, CostNanos: new(int64)},
 		"fix":    {},
 	}}}
 	body := serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
-	if !strings.Contains(body, "Claude Code steps") || strings.Index(body, ">fix<") > strings.Index(body, ">review<") {
+	if !strings.Contains(body, "Agent runs") || strings.Index(body, ">fix<") > strings.Index(body, ">review<") {
 		t.Fatal("steps missing or not sorted", body)
 	}
 	review := body[strings.Index(body, ">review<"):]
@@ -179,8 +179,8 @@ func TestRunPageShowsEachClaudeStepAndKeepsMissingValuesMissing(t *testing.T) {
 	if strings.Contains(fix, "$") || strings.Contains(fix, ">0<") || strings.Count(fix, "Unavailable") < 5 {
 		t.Fatal("missing values shown as zero:", fix)
 	}
-	s.run.Sources = nil
-	if strings.Contains(serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(), "Claude Code steps") {
+	s.run.AgentRuns = nil
+	if strings.Contains(serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(), "Agent runs") {
 		t.Fatal("empty table shown")
 	}
 }

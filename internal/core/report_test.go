@@ -20,7 +20,7 @@ func reportDeployment(t *testing.T, s *Service, f *fakeBackend) (Deployment, Ide
 	return a, Identity{Repository: "acme/agent", Workflow: a.Workflow, Ref: "refs/heads/main", RunID: 777, RunAttempt: 1, EventName: "schedule"}
 }
 func finishedReport() Report {
-	return Report{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "agent", Phase: "finished", Version: "2.1.296", ExitCode: ptr(0), TelemetrySupported: true, TelemetryReceived: true,
+	return Report{GitHubRunID: 777, GitHubRunAttempt: 1, AgentRun: "agent", Phase: "finished", Version: "2.1.296", ExitCode: ptr(0), TelemetrySupported: true, TelemetryReceived: true,
 		Usage:               &ClaudeUsage{InputTokens: ptr(int64(100)), OutputTokens: ptr(int64(10)), CacheReadTokens: ptr(int64(200)), CacheCreationTokens: ptr(int64(20))},
 		EstimatedCostMicros: ptr(int64(1_000_001)), APIErrors: 1, RateLimitFailures: 1, APIFailed: true}
 }
@@ -72,7 +72,7 @@ func TestReportMissingUsageAndSignedBinding(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
 	a, i := reportDeployment(t, s, f)
-	o := Report{GitHubRunID: 777, GitHubRunAttempt: 1, Source: "job", Phase: "finished", Version: "unknown", ExitCode: ptr(0)}
+	o := Report{GitHubRunID: 777, GitHubRunAttempt: 1, AgentRun: "job", Phase: "finished", Version: "unknown", ExitCode: ptr(0)}
 	for _, change := range []func(*Identity){
 		func(i *Identity) { i.Repository = "evil/repo" }, func(i *Identity) { i.Workflow = "other.yml" },
 		func(i *Identity) { i.Ref = "refs/heads/other" }, func(i *Identity) { i.RunAttempt = 2 },
@@ -91,7 +91,7 @@ func TestReportMissingUsageAndSignedBinding(t *testing.T) {
 		t.Fatal("missing consumption fabricated as measured zero")
 	}
 	// A measured zero is available and distinct from missing usage.
-	o.Source = "second-step"
+	o.AgentRun = "second-step"
 	o.Usage = &ClaudeUsage{InputTokens: ptr(int64(0))}
 	o.EstimatedCostMicros = ptr(int64(0))
 	o.TelemetryReceived = true
@@ -119,7 +119,7 @@ func TestReportMissingUsageAndSignedBinding(t *testing.T) {
 
 func TestReportValidation(t *testing.T) {
 	for _, change := range []func(*Report){
-		func(o *Report) { o.Source = "a/b" }, func(o *Report) { o.Version = "secret=value" },
+		func(o *Report) { o.AgentRun = "a/b" }, func(o *Report) { o.Version = "secret=value" },
 		func(o *Report) { o.ExitCode = nil }, func(o *Report) { o.ExitCode = ptr(-1) },
 		func(o *Report) { o.EstimatedCostMicros = ptr(int64(-1)) },
 		func(o *Report) { o.Usage.CacheReadTokens = ptr(int64(-1)) },
@@ -159,7 +159,7 @@ func TestReportConcurrentFirstReportsKeepOneSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := finishedReport()
-	o.Source = "next-step"
+	o.AgentRun = "next-step"
 	r, _, err := s.Report(ctx, a.ID, o, i)
 	if err != nil || r.Deployment.Revision != 1 || r.CostMicros != 2_000_002 {
 		t.Fatalf("historical snapshot changed: %#v %v", r, err)

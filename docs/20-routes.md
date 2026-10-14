@@ -20,7 +20,7 @@ These are kept stable. Deployed workflows call them. Do not rename them.
 
 ### `POST /api/agents/{id}/observations`
 
-A report from a job: a `started` or a `finished` report for one source. `Authorization: Bearer <OIDC token>`.
+A report from a job: a `started` or a `finished` report for one agent run. `Authorization: Bearer <OIDC token>`.
 
 - Body: one JSON object, up to 64 KiB, with the fixed list of fields in `Report` (`internal/core/report.go`). Unknown fields are refused.
 - The server checks the token (issuer, signature, expiry, audience), that the repository, workflow file and ref match the deployment, and that GitHub has that run attempt.
@@ -32,16 +32,16 @@ A report from a job: a `started` or a `finished` report for one source. `Authori
 
 Gets a token for one Claude Code step to send its telemetry. `Authorization: Bearer <OIDC token>`. Checked like a report. Creates the run if it is new.
 
-- Body: `{"source": "review"}`. The source is 1 to 80 letters, digits, dots, underscores or hyphens. Use a different source for each Claude Code step.
-- `200` with `{"token": "agb_...", "expires_at": "...", "traceparent": "00-...-...-01"}`. The `traceparent` has the same trace ID for every step of a run attempt. The token lasts 6 hours, or until the run finishes. It belongs to one run attempt and one source. Only its hash is stored.
-- Errors: `401` bad identity, `400` bad source, `403` the job does not match the deployment, `404` unknown deployment, `409` the run has already finished.
+- Body: `{"source": "review"}`. The `source` is the name of the agent run. It is 1 to 80 letters, digits, dots, underscores or hyphens. Use a different name for each agent run.
+- `200` with `{"token": "agb_...", "expires_at": "...", "traceparent": "00-...-...-01"}`. The `traceparent` has the same trace ID for every step of a run attempt. The token lasts 6 hours, or until the run finishes. It belongs to one run attempt and one agent run. Only its hash is stored.
+- Errors: `401` bad identity, `400` bad `source`, `403` the job does not match the deployment, `404` unknown deployment, `409` the run has already finished.
 
 ### `POST /v1/metrics`, `POST /v1/logs` and `POST /v1/traces`
 
 OpenTelemetry from Claude Code. `Authorization: Bearer agb_...`, the token from `/otlp-token`. Claude Code adds these paths to `OTEL_EXPORTER_OTLP_ENDPOINT` itself.
 
 - `Content-Type: application/json` (set `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`). Protobuf is not accepted. `Content-Encoding: gzip` is accepted. Up to 4 MiB, after decompression.
-- The token says which run and which source the data belongs to. Nothing in the payload is trusted for that.
+- The token says which run and which agent run the data belongs to. Nothing in the payload is trusted for that.
 - Metrics: the server reads `claude_code.token.usage` and `claude_code.cost.usage`, delta or cumulative. Logs: it counts `api_error` events, and rate-limit errors among them. Traces: nothing is counted. A repeated export is counted once.
 - If `OTLP_FORWARD_URL` is set, the accepted payload is forwarded to the telemetry store with the run's labels added (see `10-design.md`). Otherwise the rest is dropped.
 - `200` with `{}`.

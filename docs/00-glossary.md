@@ -11,7 +11,7 @@ The words we use for the domain. Code, database and dashboard should use the sam
 | Deployment | A pipeline used in one repository, through one caller workflow. Identified by repository + workflow file. One caller workflow calls exactly one pipeline. Created by the first valid run; no registration by hand. | `core.Deployment` and the `agents` table. Today they also hold the ref, are registered by hand, and have no pipeline. |
 | Run | One GitHub run attempt of a deployment, with its exact version and configuration. | `core.Run`, `runs` table. One per attempt. |
 | Agent | A named role inside a pipeline, e.g. `triage` or `reviewer`. A step in the pipeline's YAML starts it. | Not in code. |
-| Agent run | One execution of an agent inside a run: one Claude Code invocation. A run has zero or more agent runs. | "Source": the `source` input, `Run.Sources`, `run_tokens.source`. |
+| Agent run | One execution of an agent inside a run: one Claude Code invocation. A run has zero or more agent runs. | `Run.AgentRuns`, `Report.AgentRun`, `AgentRunUsage`. The wire names stay "source" and "sources": the `source` input, the `source` and `sources` JSON keys, `run_tokens.source`, the `agbredo.source` label. |
 | Observation | Anything that arrives about a run: reporter reports, telemetry, GitHub webhooks and polls. | Split into `core.Report`, `core.Event` and telemetry. The report URL already says `observations`. |
 
 ## More terms

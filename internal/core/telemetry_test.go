@@ -42,12 +42,12 @@ func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
 	if tp := TraceParent(a.ID, i); !regexp.MustCompile(`^00-[0-9a-f]{32}-[0-9a-f]{16}-01$`).MatchString(tp) || tp[3:35] != r.ID[:32] {
 		t.Errorf("traceparent %q does not follow the run %s", tp, r.ID)
 	}
-	if _, _, err = s.MintToken(ctx, a.ID, "bad source!", i); !errors.Is(err, ErrInvalid) {
-		t.Errorf("source: %v", err)
+	if _, _, err = s.MintToken(ctx, a.ID, "bad agent run!", i); !errors.Is(err, ErrInvalid) {
+		t.Errorf("agent run: %v", err)
 	}
 }
 
-func TestIngestCountsEachExportOnceAndPerSource(t *testing.T) {
+func TestIngestCountsEachExportOnceAndPerAgentRun(t *testing.T) {
 	s, f, a, i := tokenDeployment(t)
 	ctx := context.Background()
 	review, _, err := s.MintToken(ctx, a.ID, "review", i)
@@ -91,9 +91,9 @@ func TestIngestCountsEachExportOnceAndPerSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rv, fx := r.Sources["review"], r.Sources["fix"]
+	rv, fx := r.AgentRuns["review"], r.AgentRuns["fix"]
 	if rv == nil || fx == nil || *rv.Usage.InputTokens != 105 || *fx.Usage.InputTokens != 7 || rv.Version != "2.1.296" {
-		t.Fatalf("per-source tokens wrong: %+v %+v", rv, fx)
+		t.Fatalf("per-agent-run tokens wrong: %+v %+v", rv, fx)
 	}
 	if rv.Usage.OutputTokens != nil || fx.CostNanos != nil || r.ClaudeUsage.CacheReadTokens != nil {
 		t.Fatal("a missing measurement was stored as zero")
@@ -148,7 +148,7 @@ func TestIngestTracesChecksTokenAndReturnsOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin, err := s.IngestTraces(ctx, token, []byte(`{"resourceSpans":[]}`))
-	if err != nil || origin.Source != "review" || origin.Run.Deployment.ID != a.ID {
+	if err != nil || origin.AgentRun != "review" || origin.Run.Deployment.ID != a.ID {
 		t.Fatalf("%#v %v", origin, err)
 	}
 	if origin.Run.Actor != "starter" || origin.Run.TriggeringActor != "rerunner" {
