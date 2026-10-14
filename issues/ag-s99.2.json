@@ -4,6 +4,8 @@
     "ag-s99.1"
   ],
   "blocks": [],
+  "closed_at": "2026-10-14T15:59:33Z",
+  "close_reason": "Done on branch claude/project-thread-yn74b3, reviewed. Run JSON key pipeline {path, ref, sha}; deployment page lists versions of the last 20 runs.",
   "created": "2026-10-14T12:22:56Z",
   "description": "DESIGN TALK (schema, stored data). Needs ag-s99.1 first.\n\nGoal: each run records which pipeline ran and at which version, so the dashboard can show which version runs where.\n\nGlossary (docs/00-glossary.md): Pipeline = a reusable workflow in a central repo, named by its path. Version = the central repo's git ref or SHA. It must come from GitHub (OIDC claims job_workflow_ref and job_workflow_sha), never from the pipeline, so it cannot be faked.\n\nWhere: claims are parsed in internal/auth/oidc.go (Claims has JobWorkflowRef; add JobWorkflowSha) and returned as core.Identity. Runs are created in internal/core/report.go and telemetry.go (both take the identity). Runs keep a JSON document (jsonb), so a new field may not need a column, but adding it changes what the server stores: ask Matt.\n\nFor a workflow that is not reusable, job_workflow_ref equals workflow_ref; decide with Matt whether to store it then, or leave the pipeline missing (CLAUDE.md: missing measurements stay missing).\n\nQuestions for Matt: store ref, SHA or both? Show the pipeline on run pages only, or also on the deployment page?",
   "id": "ag-s99.2",
@@ -20,8 +22,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Store pipeline and version on each run",
   "type": "task",
-  "updated_at": "2026-10-14T15:43:00Z"
+  "updated_at": "2026-10-14T15:59:33Z"
 }
