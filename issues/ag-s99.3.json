@@ -19,11 +19,15 @@
     {
       "text": "2026-10-14, Matt: existing data is only tests, it can be dropped. So no merge/legacy handling for registrations that differ by ref; a new migration may delete them and add a unique index on (repository, workflow) here rather than in ag-s99.4.",
       "timestamp": "2026-10-14T14:48:19Z"
+    },
+    {
+      "text": "2026-10-14, Matt: migrations must never be destructive (supersedes the earlier note). Matt deletes duplicate registrations by hand when asked; then a migration may add the unique index on (repository, workflow).",
+      "timestamp": "2026-10-14T14:51:44Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Identify a deployment by repository + workflow file",
   "type": "task",
-  "updated_at": "2026-10-14T14:48:19Z"
+  "updated_at": "2026-10-14T14:51:44Z"
 }
