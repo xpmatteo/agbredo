@@ -5,7 +5,7 @@
   ],
   "blocks": [],
   "created": "2026-10-14T12:23:00Z",
-  "description": "Pipelines live in a central repo (e.g. agbredo-agents) as reusable workflows; their files ship in composite actions (github.action_path). Reporter stays in agbredo, used as xpmatteo/agbredo/integrations/claude-code@\u003ctag\u003e. Needs release tags.",
+  "description": "Set up sharing of pipelines without copying files into target repos. Needs ag-s99.1 first (until then the OIDC check rejects reusable workflows).\n\nDecided with Matt on 2026-10-14:\n- Split. The reporter actions (integrations/claude-code, integrations/claude-code-otlp) stay in the agbredo repo, because they change together with the server's report fields and OIDC checks. Pipelines go in a separate central repo (name to agree with Matt, e.g. xpmatteo/agbredo-agents), owned like an enterprise agent team would own them.\n- Pipelines use the reporter as a remote composite action: uses: xpmatteo/agbredo/integrations/claude-code@\u003ctag\u003e. This needs release tags on agbredo, because every push to main deploys to Railway and pipelines must not follow main. Update integrations/claude-code/README.md, which today says to copy the directory.\n- Each target repo keeps only a caller workflow: triggers, permissions (including id-token: write; a reusable workflow can only narrow permissions) and one jobs.\u003cx\u003e.uses: line pointing at the pipeline, plus secrets: inherit or explicit secrets.\n\nHow pipeline files reach the runner: inside a reusable workflow, actions/checkout and uses: ./... refer to the caller repo, not the central repo. So put each agent's scripts, prompts and settings in a composite action in the central repo and reference it with a full uses: owner/repo/path@ref; the runner downloads it and github.action_path points to its files (the reporter already finds report.py this way). The pipeline at @v1 calls its actions at @v1; bump both together. Alternative for the Claude parts: claude-code-action can install Claude Code plugins from a marketplace repo (check the current inputs, believed to be plugin_marketplaces and plugins).\n\nSteps: create a tag on agbredo; create the central repo with one example pipeline (port examples/hello-agent or the \"claude\" scenario in .github/workflows/agbredo-example.yml); a caller workflow in a test repo; check a run reports to https://www.agbredo.com. Creating repos and tags is outward-facing: confirm with Matt first.",
   "id": "ag-s99.10",
   "labels": [],
   "parent": "ag-s99",
@@ -13,5 +13,5 @@
   "status": "open",
   "title": "Create the central pipelines repo and publish the reporter as a remote action",
   "type": "task",
-  "updated_at": "2026-10-14T12:23:07Z"
+  "updated_at": "2026-10-14T12:34:19Z"
 }
