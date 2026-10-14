@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Matteo Vaccari",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-10-14T12:26:08Z",
@@ -7,8 +7,8 @@
   "id": "ag-ldj",
   "labels": [],
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Number docs files to show reading order",
   "type": "task",
-  "updated_at": "2026-10-14T12:26:08Z"
+  "updated_at": "2026-10-14T12:26:22Z"
 }
