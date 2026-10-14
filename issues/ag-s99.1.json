@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Matteo Vaccari",
   "blocked_by": [],
   "blocks": [
     "ag-s99.10",
@@ -11,8 +11,8 @@
   "labels": [],
   "parent": "ag-s99",
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Allow reusable workflows in the OIDC check",
   "type": "task",
-  "updated_at": "2026-10-14T12:34:19Z"
+  "updated_at": "2026-10-14T12:49:04Z"
 }
