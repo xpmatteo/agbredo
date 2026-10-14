@@ -7,7 +7,7 @@ on:
         description: Which pretend agent to run
         type: choice
         default: hello
-        options: [hello, play, rate-limited, spendthrift, silent, cancelled]
+        options: [hello, play, rate-limited, spendthrift, silent, cancelled, otlp]
 
 permissions:
   contents: read
@@ -21,6 +21,15 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      # For "otlp" only: the token which lets a Claude Code step send its telemetry to Agbredo.
+      # A real workflow puts this step before each Claude Code step, with a different source name for each.
+      - name: Get a telemetry token
+        if: inputs.scenario == 'otlp'
+        uses: ./integrations/claude-code-otlp
+        with:
+          url: ${{ vars.AGBREDO_URL }}
+          agent-id: ${{ vars.AGBREDO_AGENT_ID }}
+          source: pretend-claude
       - name: Run the pretend agent
         env:
           AGBREDO_URL: ${{ vars.AGBREDO_URL }}

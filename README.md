@@ -4,6 +4,8 @@ Agbredo is a Go control plane with PostgreSQL and server-rendered HTML. Existing
 
 The [reusable reporting integration](integrations/claude-code/README.md) wraps the existing execution command with runner-local OpenTelemetry collection and GitHub OIDC reporting. Keep existing workflows, triggers, installation and authentication. No provider replacement, workflow renaming or dispatch inputs are required. Consumption estimates are not actual subscription charges; absent measurements remain unavailable. Claude Code **2.1.296** was verified locally; capability evidence and verification commands are included with the integration.
 
+The simpler way is [`integrations/claude-code-otlp`](integrations/claude-code-otlp/README.md): one small step before each Claude Code step, and Claude Code sends its own telemetry to Agbredo. It shows usage per step. The wrapper above keeps working.
+
 Agbredo only receives reports. It never dispatches a workflow, approves an action or writes to GitHub. [`docs/design.md`](docs/design.md) describes the design in a page. [`examples/hello-agent`](examples/hello-agent/) holds pretend agents that report without calling a model.
 
 ## Local development
@@ -75,6 +77,8 @@ examples/hello-agent/agbredo-example.yml -> .github/workflows/agbredo-example.ym
 ```
 
 Register an agent with workflow `agbredo-example.yml`, set the repository variables `AGBREDO_URL` and `AGBREDO_AGENT_ID`, then run the workflow by hand and choose a scenario. Its job only needs `id-token: write` and `contents: read`. A fresh OIDC token is requested for each report with `AGBREDO_BASE_URL` as its audience. Agbredo verifies the issuer, signature, expiry, audience, repository, workflow file and configured reference, and then asks GitHub for the same run attempt. Direct jobs are supported; reusable workflows are rejected by the verifier.
+
+The `otlp` scenario shows the telemetry path. It runs the `integrations/claude-code-otlp` action, then sends made-up Claude Code telemetry, including one repeated export that is counted once. Copy `integrations/claude-code-otlp` as well to use it.
 
 Run `python3 examples/hello-agent/agent.py play` on your machine to see the reports it would send.
 

@@ -1,0 +1,57 @@
+name: Send Claude Code telemetry to Agbredo
+description: Asks Agbredo for a token and points later steps' Claude Code telemetry at it. Put it before each Claude Code step.
+inputs:
+  url:
+    description: Public Agbredo HTTPS origin, without a path
+    required: true
+  agent-id:
+    description: Registered agent ID
+    required: true
+  source:
+    description: Name of the Claude Code step that follows. Unique in the workflow run; letters, digits, dots, underscores and hyphens.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        AGBREDO_URL: ${{ inputs.url }}
+        AGBREDO_AGENT_ID: ${{ inputs.agent-id }}
+        AGBREDO_SOURCE: ${{ inputs.source }}
+      run: |
+        # Reporting must never fail the agent: on any problem, warn and turn telemetry off.
+        # Off also covers an earlier source's token, so that it is not reused by this step.
+        skip() { echo "::warning::Agbredo telemetry is off: $1"; echo "CLAUDE_CODE_ENABLE_TELEMETRY=0" >> "$GITHUB_ENV"; exit 0; }
+        url="${AGBREDO_URL%/}"
+        [[ "$url" =~ ^https://[^/?#@]+$ ]] || skip "url must be an https origin"
+        [[ "$AGBREDO_AGENT_ID" =~ ^[A-Za-z0-9_.-]+$ ]] || skip "invalid agent id"
+        [[ "$AGBREDO_SOURCE" =~ ^[A-Za-z0-9_.-]{1,80}$ ]] || skip "invalid source"
+        [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || skip "the job needs 'id-token: write'"
+
+        oidc=$(curl -fsS --max-time 10 -G -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          --data-urlencode "audience=$url" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value) || skip "GitHub gave no identity token"
+        echo "::add-mask::$oidc"
+        reply=$(jq -n --arg source "$AGBREDO_SOURCE" '{source: $source}' |
+          curl -fsS --max-time 20 --retry 2 -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" \
+            -d @- "$url/api/agents/$AGBREDO_AGENT_ID/otlp-token") || skip "Agbredo refused to give a token"
+        token=$(jq -r .token <<<"$reply")
+        [[ "$token" =~ ^agb_[0-9a-f]+$ ]] || skip "unexpected reply from Agbredo"
+        echo "::add-mask::$token"
+
+        {
+          echo "CLAUDE_CODE_ENABLE_TELEMETRY=1"
+          echo "OTEL_METRICS_EXPORTER=otlp"
+          echo "OTEL_LOGS_EXPORTER=otlp"
+          echo "OTEL_TRACES_EXPORTER=none"
+          echo "OTEL_EXPORTER_OTLP_PROTOCOL=http/json"
+          echo "OTEL_EXPORTER_OTLP_ENDPOINT=$url"
+          echo "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer $token"
+          echo "OTEL_METRICS_INCLUDE_VERSION=true"
+          echo "OTEL_METRICS_INCLUDE_ACCOUNT_UUID=false"
+          echo "OTEL_METRIC_EXPORT_INTERVAL=10000"
+          echo "OTEL_LOG_USER_PROMPTS=0"
+          echo "OTEL_LOG_ASSISTANT_RESPONSES=0"
+          echo "OTEL_LOG_TOOL_DETAILS=0"
+          echo "OTEL_LOG_TOOL_CONTENT=0"
+          echo "OTEL_LOG_RAW_API_BODIES=0"
+        } >> "$GITHUB_ENV"

@@ -71,6 +71,15 @@ func New(service Service, auth Auth) *Server {
 			return "$" + money(r.CostMicros)
 		},
 		"runTokens": runTokens,
+		"sourceCost": func(u *core.SourceUsage) string {
+			if u.CostNanos == nil {
+				return "Unavailable"
+			}
+			return "$" + money(u.CostMicros())
+		},
+		"sourceTokens": func(u *core.SourceUsage, kind string) string {
+			return usageTokens(u.Usage, kind)
+		},
 		"date": func(t time.Time) string {
 			if t.IsZero() {
 				return "—"
@@ -285,18 +294,19 @@ func measured(n *int64) string {
 	}
 	return strconv.FormatInt(*n, 10)
 }
-func runTokens(r core.Run, kind string) string {
-	if r.ClaudeUsage == nil {
+func runTokens(r core.Run, kind string) string { return usageTokens(r.ClaudeUsage, kind) }
+func usageTokens(u *core.ClaudeUsage, kind string) string {
+	if u == nil {
 		return "Unavailable"
 	}
 	switch kind {
 	case "input":
-		return measured(r.ClaudeUsage.InputTokens)
+		return measured(u.InputTokens)
 	case "output":
-		return measured(r.ClaudeUsage.OutputTokens)
+		return measured(u.OutputTokens)
 	case "cacheRead":
-		return measured(r.ClaudeUsage.CacheReadTokens)
+		return measured(u.CacheReadTokens)
 	default:
-		return measured(r.ClaudeUsage.CacheCreationTokens)
+		return measured(u.CacheCreationTokens)
 	}
 }
