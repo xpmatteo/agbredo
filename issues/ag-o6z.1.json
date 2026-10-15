@@ -13,11 +13,15 @@
     {
       "text": "Built on branch ag-o6z.1/archive-webhooks, commit 7ddf2a8 (not merged). Forwarder.SendWebhook + WebhookRecord (one OTLP log record, raw body unchanged, service.name agbredo-github-webhooks). OpenObserve docs (openobserve.ai/docs/reference/api/ingestion/logs/otlp) confirm the 'stream-name' header picks the stream on OTLP HTTP /v1/logs, so webhooks are posted with stream-name: github_webhooks. Migration 007 adds nullable event/action/repository/installation_id/outcome/error (with a CHECK on outcome). Redelivery: handled path (ApplyLifecycle tx) overwrites only failed/ignored rows; legacy NULL-outcome rows count as handled and are NOT reapplied (deviation from the ticket's 'IS DISTINCT FROM handled' suggestion, which would reapply old rows). RecordDelivery: ignored overwrites failed; failed overwrites failed/ignored; nothing overwrites handled. Invalid workflow_run payload is indexed as failed (still 400). New: event header over 100 chars gets 400 (headers are unsigned and the event is stored). 'webhook body' log line removed. Docs: design (new Webhook flow section, Parts, Data, Trust, Limits), routes, README. Tests: forward_test (record shape, stream header), core TestDatabaseWebhookDeliveryIndex, webapi TestDatabaseWebhookDeliveriesAreArchivedAndIndexed. make test passes with DB tests running. Open: retention of the github_webhooks stream (Matt).",
       "timestamp": "2026-10-15T09:25:29Z"
+    },
+    {
+      "text": "Review (2026-10-15): no bugs; 5 deviations accepted. Fix now: drop-log with delivery id, docs on service.name not reserved, UTF-8 cut, handled wording, routes doc on refused deliveries, real-path test for handled redelivery, ignored-\u003ehandled test, 'webhook not indexed' log. No action: repeated upsert SQL (WHERE differs on purpose); 500/400 tests without DB (optional). Note: rolling back to pre-007 code would treat failed/ignored rows as handled (ON CONFLICT DO NOTHING); the 30 s poll covers open runs, so accepted.",
+      "timestamp": "2026-10-15T09:30:54Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Archive every verified webhook delivery to OpenObserve and index it in Postgres",
   "type": "task",
-  "updated_at": "2026-10-15T09:25:29Z"
+  "updated_at": "2026-10-15T09:30:54Z"
 }
