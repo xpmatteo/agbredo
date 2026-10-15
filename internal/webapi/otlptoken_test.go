@@ -20,9 +20,6 @@ import (
 // gitHub is a stand-in for the GitHub App: one run, and one installation.
 type gitHub struct{ run core.WorkflowRun }
 
-func (g gitHub) GetRun(context.Context, core.Deployment, int64) (core.WorkflowRun, error) {
-	return g.run, nil
-}
 func (g gitHub) GetRunAttempt(context.Context, core.Deployment, int64, int64) (core.WorkflowRun, error) {
 	return g.run, nil
 }

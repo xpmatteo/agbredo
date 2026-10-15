@@ -43,6 +43,31 @@ func TestPipelineOf(t *testing.T) {
 	}
 }
 
+// From a webhook, the pipeline comes from the path of the first referenced
+// workflow. GitHub's ref field of the entry is not used.
+func TestPipelineOfRun(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		refs []ReferencedWorkflow
+		want *Pipeline
+	}{
+		{"tag", []ReferencedWorkflow{{Path: "org/agents/.github/workflows/triage.yml@v1", SHA: pipelineSHA}},
+			&Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "v1", SHA: pipelineSHA}},
+		{"first of several", []ReferencedWorkflow{{Path: "org/agents/.github/workflows/triage.yaml@refs/heads/main"}, {Path: "org/other/.github/workflows/x.yml@v2", SHA: pipelineSHA}},
+			&Pipeline{Path: "org/agents/.github/workflows/triage.yaml", Ref: "refs/heads/main"}},
+		{"odd sha is dropped", []ReferencedWorkflow{{Path: "org/agents/.github/workflows/triage.yml@v1", SHA: "nope"}},
+			&Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "v1"}},
+		{"none", nil, nil},
+		{"no ref", []ReferencedWorkflow{{Path: "org/agents/.github/workflows/triage.yml"}}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PipelineOfRun(WorkflowRun{Referenced: tc.refs}); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPipelineDisplay(t *testing.T) {
 	p := Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "refs/tags/v1", SHA: pipelineSHA}
 	if p.ShortSHA() != "0123456" || p.URL() != "https://github.com/org/agents/blob/"+pipelineSHA+"/.github/workflows/triage.yml" {
@@ -86,7 +111,7 @@ func TestRunRecordsPipelineAndRecentRunsListsThem(t *testing.T) {
 	if r := startRun(t, s, a.ID, "review", direct); r.Pipeline != nil {
 		t.Fatalf("a direct job has no pipeline: %#v", r.Pipeline)
 	}
-	f.put(WorkflowRun{ID: 778, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "in_progress"})
+	f.put(WorkflowRun{ID: 778, Attempt: 1, Workflow: a.Workflow, HeadBranch: "main", Status: "in_progress"})
 	reusable := direct
 	reusable.RunID = 778
 	reusable.JobWorkflowRef = "org/agents/.github/workflows/triage.yml@refs/tags/v1"

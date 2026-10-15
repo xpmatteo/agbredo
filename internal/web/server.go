@@ -79,6 +79,13 @@ func New(service Service, auth Auth) *Server {
 			return usageTokens(u.Usage, kind)
 		},
 		"usageTokens": usageTokens,
+		// githubTime is a time from GitHub, which may be unknown.
+		"githubTime": func(t time.Time) string {
+			if t.IsZero() {
+				return "Unavailable"
+			}
+			return t.UTC().Format("2006-01-02 15:04:05 UTC")
+		},
 		"date": func(t time.Time) string {
 			if t.IsZero() {
 				return "—"
@@ -290,12 +297,16 @@ func measured(n *int64) string {
 }
 func runTokens(r core.Run, kind string) string { return usageTokens(r.ClaudeUsage, kind) }
 
-// runRef is the git ref the run ran from. Runs created before the ref was
-// recorded on the run fall back to the ref of their deployment copy.
+// runRef is the git ref the run ran from, from its OIDC identity. A run that
+// asked for no telemetry token has none; it shows GitHub's head branch (a
+// branch or tag name) instead. Runs created before the ref was recorded on the
+// run fall back to the ref of their deployment copy.
 func runRef(r core.Run) string {
 	switch {
 	case r.Ref != "":
 		return r.Ref
+	case r.HeadBranch != "":
+		return r.HeadBranch
 	case r.Deployment.Ref != "":
 		return r.Deployment.Ref
 	default:

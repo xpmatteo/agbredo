@@ -3,11 +3,11 @@ package webapi
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,31 +15,11 @@ import (
 	"agbredo/internal/forward"
 )
 
-// changingGitHub is a GitHub whose run, and whether it answers, can change.
-type changingGitHub struct {
-	mu   sync.Mutex
-	run  core.WorkflowRun
-	down bool
-}
-
-func (g *changingGitHub) GetRun(context.Context, core.Deployment, int64) (core.WorkflowRun, error) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.down {
-		return core.WorkflowRun{}, errors.New("GitHub is down")
-	}
-	return g.run, nil
-}
-func (g *changingGitHub) GetRunAttempt(ctx context.Context, d core.Deployment, id, _ int64) (core.WorkflowRun, error) {
-	return g.GetRun(ctx, d, id)
-}
-func (g *changingGitHub) Installation(ctx context.Context, owner, repository string) (int64, error) {
-	return gitHub{}.Installation(ctx, owner, repository)
-}
-func (g *changingGitHub) set(run core.WorkflowRun, down bool) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.run, g.down = run, down
+// workflowRunBody is a workflow_run webhook payload for one run attempt.
+func workflowRunBody(repository, workflow string, id int64, status, conclusion string) string {
+	return fmt.Sprintf(`{"action":"completed","workflow_run":{"id":%d,"run_attempt":1,"path":".github/workflows/%s","status":%q,"conclusion":%q,
+		"head_branch":"main","event":"schedule","repository":{"full_name":%q}},"repository":{"full_name":%q},"installation":{"id":42}}`,
+		id, workflow, status, conclusion, repository, repository)
 }
 
 // archived is one webhook delivery as the telemetry store received it.
@@ -52,8 +32,7 @@ type archived struct {
 // when GitHub sends it again.
 func TestDatabaseWebhookDeliveriesAreArchivedAndIndexed(t *testing.T) {
 	ctx := context.Background()
-	github := &changingGitHub{run: core.WorkflowRun{ID: 777, Attempt: 1, Workflow: "agent.yml", Status: "in_progress"}}
-	service := databaseService(t, github)
+	service := databaseService(t, gitHub{run: core.WorkflowRun{ID: 777, Attempt: 1, Workflow: "agent.yml", Status: "in_progress"}})
 	received := make(chan archived, 20)
 	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -139,41 +118,59 @@ func TestDatabaseWebhookDeliveriesAreArchivedAndIndexed(t *testing.T) {
 		t.Fatalf("pull_request row: %q %q %q %d", text(r.event), text(r.action), text(r.repository), installation)
 	}
 
-	// A run Agbredo does not know: ignored. A bad workflow_run payload: failed.
-	if code := deliver("workflow_run", "wr-unknown", `{"action":"completed","repository":{"full_name":"acme/agent"},"workflow_run":{"id":999}}`); code != http.StatusNoContent {
-		t.Fatalf("unknown run: status %d", code)
+	// A workflow with no deployment: ignored. A bad workflow_run payload: failed.
+	if code := deliver("workflow_run", "wr-unknown", workflowRunBody("acme/agent", "other.yml", 999, "completed", "success")); code != http.StatusNoContent {
+		t.Fatalf("unknown workflow: status %d", code)
 	}
 	expectOutcome("wr-unknown", core.DeliveryIgnored, "")
-	for _, body := range []string{`not-json`, `{}`, `{"workflow_run":{"id":0}}`} {
+	for _, body := range []string{`not-json`, `{}`, `{"workflow_run":{"id":0}}`, pr} {
 		if code := deliver("workflow_run", "wr-bad", body); code != http.StatusBadRequest {
 			t.Fatalf("invalid workflow payload %s: status %d", body, code)
 		}
 	}
 	expectOutcome("wr-bad", core.DeliveryFailed, "invalid workflow_run payload")
 
-	// A known run, while GitHub is down: failed. GitHub sends it again: handled.
+	// The deployment exists once a job asked for a token. While the database
+	// fails: failed. GitHub sends it again: handled.
 	if code, _ := postToken(t, a, "/api/otlp-token"); code != http.StatusOK {
 		t.Fatalf("token: status %d", code)
 	}
-	completed := core.WorkflowRun{ID: 777, Attempt: 1, Workflow: "agent.yml", Status: "completed", Conclusion: "success"}
-	github.set(completed, true)
-	run := `{"action":"completed","repository":{"full_name":"acme/agent"},"installation":{"id":42},"workflow_run":{"id":777}}`
-	if code := deliver("workflow_run", "wr-1", run); code != http.StatusInternalServerError {
-		t.Fatalf("GitHub down: status %d", code)
+	run := workflowRunBody("acme/agent", "agent.yml", 777, "completed", "success")
+	if _, err := service.DB.Exec(ctx, `CREATE FUNCTION broken_runs() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'runs are broken'; END; $$;
+		CREATE TRIGGER broken_runs BEFORE INSERT OR UPDATE ON runs FOR EACH ROW EXECUTE FUNCTION broken_runs()`); err != nil {
+		t.Fatal(err)
 	}
-	expectOutcome("wr-1", core.DeliveryFailed, "GitHub is down")
-	github.set(completed, false)
+	if code := deliver("workflow_run", "wr-1", run); code != http.StatusInternalServerError {
+		t.Fatalf("database fails: status %d", code)
+	}
+	if r, _ := index("wr-1"); text(r.outcome) != core.DeliveryFailed || !strings.Contains(text(r.problem), "runs are broken") {
+		t.Fatalf("wr-1: outcome %q, error %q", text(r.outcome), text(r.problem))
+	}
+	if _, err := service.DB.Exec(ctx, "DROP TRIGGER broken_runs ON runs; DROP FUNCTION broken_runs()"); err != nil {
+		t.Fatal(err)
+	}
 	if code := deliver("workflow_run", "wr-1", run); code != http.StatusNoContent {
 		t.Fatalf("redelivery: status %d", code)
 	}
 	expectOutcome("wr-1", core.DeliveryHandled, "")
+	// A run of the deployment that asked for no token is recorded too.
+	if code := deliver("workflow_run", "wr-2", workflowRunBody("acme/agent", "agent.yml", 778, "completed", "skipped")); code != http.StatusNoContent {
+		t.Fatalf("run without telemetry: status %d", code)
+	}
+	expectOutcome("wr-2", core.DeliveryHandled, "")
 	fleet, err := service.Fleet(ctx)
-	if err != nil || len(fleet.Runs) != 1 || fleet.Runs[0].Status != "completed" {
-		t.Fatalf("run not completed: %+v %v", fleet.Runs, err)
+	if err != nil || len(fleet.Runs) != 2 {
+		t.Fatalf("runs: %+v %v", fleet.Runs, err)
+	}
+	for _, r := range fleet.Runs {
+		want := map[int64]string{777: "completed", 778: "failed"}[r.GitHubRunID]
+		if r.Status != want || r.HeadBranch != "main" {
+			t.Fatalf("run %d: status %s, head branch %q", r.GitHubRunID, r.Status, r.HeadBranch)
+		}
 	}
 
 	// Every verified delivery reached the store, in its own stream, unchanged.
-	want := []string{"ping-1", "pr-1", "wr-unknown", "wr-bad", "wr-bad", "wr-bad", "wr-1", "wr-1"}
+	want := []string{"ping-1", "pr-1", "wr-unknown", "wr-bad", "wr-bad", "wr-bad", "wr-bad", "wr-1", "wr-1", "wr-2"}
 	for n, delivery := range want {
 		select {
 		case got := <-received:

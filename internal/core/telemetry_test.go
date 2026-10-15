@@ -46,7 +46,7 @@ func TestMintTokenChecksIdentityAndRegistersRun(t *testing.T) {
 		}
 	}
 	// The ref is not part of the deployment: a run from another branch belongs to it.
-	f.put(WorkflowRun{ID: 778, Attempt: 1, Workflow: a.Workflow, Ref: "feature", Status: "in_progress"})
+	f.put(WorkflowRun{ID: 778, Attempt: 1, Workflow: a.Workflow, HeadBranch: "feature", Status: "in_progress"})
 	branch := Identity{Repository: "acme/agent", Workflow: a.Workflow, Ref: "refs/heads/feature", RunID: 778, RunAttempt: 1, EventName: "push"}
 	if other := startRun(t, s, a.ID, "review", branch); other.Ref != "refs/heads/feature" || other.Deployment.ID != a.ID {
 		t.Errorf("run from another branch: %#v", other)
@@ -124,8 +124,8 @@ func TestIngestCountsEachExportOnceAndPerAgentRun(t *testing.T) {
 	if _, err = s.IngestMetrics(ctx, review, []byte("nope")); !errors.Is(err, ErrInvalid) {
 		t.Fatal("invalid body not rejected", err)
 	}
-	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "completed", Conclusion: "success"})
-	if err = webhook(s, "otlp-done", "acme/agent", 777); err != nil {
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, HeadBranch: "main", Status: "completed", Conclusion: "success"})
+	if err = webhook(s, "otlp-done", "acme/agent", WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, HeadBranch: "main", Status: "completed", Conclusion: "success"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.IngestMetrics(ctx, review, delta("9", "1")); !errors.Is(err, ErrUnauthorized) {
@@ -154,7 +154,7 @@ func TestExpiredTokenIsRefused(t *testing.T) {
 func TestIngestTracesChecksTokenAndReturnsOrigin(t *testing.T) {
 	s, f, a, i := tokenDeployment(t)
 	ctx := context.Background()
-	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "in_progress", Actor: "starter", TriggeringActor: "rerunner"})
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, HeadBranch: "main", Status: "in_progress", Actor: "starter", TriggeringActor: "rerunner"})
 	token, _, err := s.MintToken(ctx, a.ID, "review", i)
 	if err != nil {
 		t.Fatal(err)

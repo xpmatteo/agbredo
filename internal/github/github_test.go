@@ -45,10 +45,10 @@ func TestVerifyWebhook(t *testing.T) {
 	}
 }
 
-func TestGetRunWorkflowIdentity(t *testing.T) {
+func TestGetRunAttemptWorkflowIdentity(t *testing.T) {
 	b := mockBackend(t, func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/runs/123") {
-			w.Write([]byte(`{"id":123,"workflow_id":4,"head_branch":"main","display_title":"unique","html_url":"https://github.com/o/r/actions/runs/123"}`))
+		if strings.HasSuffix(r.URL.Path, "/runs/123/attempts/1") {
+			w.Write([]byte(`{"id":123,"run_attempt":1,"workflow_id":4,"head_branch":"main","display_title":"unique","html_url":"https://github.com/o/r/actions/runs/123"}`))
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/workflows/4") {
@@ -58,8 +58,8 @@ func TestGetRunWorkflowIdentity(t *testing.T) {
 		t.Errorf("unexpected request %s", r.URL.Path)
 		w.WriteHeader(404)
 	})
-	run, err := b.GetRun(context.Background(), core.Deployment{Owner: "o", Repository: "r"}, 123)
-	if err != nil || run.Workflow != "continue.yml" || run.Ref != "main" {
+	run, err := b.GetRunAttempt(context.Background(), core.Deployment{Owner: "o", Repository: "r"}, 123, 1)
+	if err != nil || run.Workflow != "continue.yml" || run.HeadBranch != "main" {
 		t.Fatalf("wrong workflow: %#v %v", run, err)
 	}
 }
@@ -163,9 +163,6 @@ func TestExternalFailureIsReturned(t *testing.T) {
 		w.Write([]byte(`{"message":"forbidden"}`))
 	})
 	a := core.Deployment{Owner: "o", Repository: "r"}
-	if _, err := b.GetRun(context.Background(), a, 1); err == nil {
-		t.Fatal("run lookup failure masked")
-	}
 	if _, err := b.GetRunAttempt(context.Background(), a, 1, 1); err == nil {
 		t.Fatal("attempt lookup failure masked")
 	}

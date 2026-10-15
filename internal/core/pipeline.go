@@ -44,6 +44,27 @@ func PipelineOf(i Identity) *Pipeline {
 	return p
 }
 
+// PipelineOfRun reads the pipeline from the referenced workflows of a GitHub
+// workflow run, for a run that has no OIDC identity. It takes the first entry,
+// as a run keeps one pipeline. The ref is the text after "@" in the entry's
+// path, as the caller workflow wrote it (e.g. v1, not refs/tags/v1). The
+// entry's own ref field is not used: it is not reliable.
+func PipelineOfRun(gh WorkflowRun) *Pipeline {
+	if len(gh.Referenced) == 0 {
+		return nil
+	}
+	first := gh.Referenced[0]
+	m := jobWorkflowRef.FindStringSubmatch(first.Path)
+	if m == nil {
+		return nil
+	}
+	p := &Pipeline{Path: m[1], Ref: m[2]}
+	if commitSHA.MatchString(first.SHA) {
+		p.SHA = first.SHA
+	}
+	return p
+}
+
 // ShortSHA is the first 7 characters of the commit, as GitHub shows it.
 func (p Pipeline) ShortSHA() string {
 	if len(p.SHA) < 7 {

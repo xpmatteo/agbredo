@@ -43,6 +43,15 @@ func verifyIdentity(a Deployment, i Identity, gh WorkflowRun) error {
 
 // lockRun finds the run for a verified GitHub run attempt, or creates it, and
 // locks it for the rest of the transaction. The first valid request creates it.
+//
+// A run that a webhook recorded, but that has no telemetry token yet, is
+// treated like a new run: its deployment must be live and enabled. Only a run
+// that already has a token may get more while its deployment is disabled, as
+// before. Recording a run grants it nothing.
+//
+// The first token of a run records the ref, trigger event and pipeline from
+// the OIDC identity, which is more exact than the webhook's facts. Later
+// requests change neither.
 func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i Identity) (Run, WorkflowRun, error) {
 	var gh WorkflowRun
 	id := attemptRunID(deploymentID, i.RunID, i.RunAttempt)
@@ -50,8 +59,14 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i
 	if err != nil && err != ErrNotFound {
 		return r, gh, err
 	}
+	granted := false
+	if err == nil {
+		if granted, err = hasToken(ctx, tx, id); err != nil {
+			return r, gh, err
+		}
+	}
 	a := r.Deployment
-	if err == ErrNotFound {
+	if !granted {
 		a, err = readJSON[Deployment](ctx, tx, "SELECT document FROM agents WHERE id=$1 AND NOT deleted FOR SHARE", deploymentID)
 		if err != nil {
 			return r, gh, err
@@ -84,7 +99,29 @@ func (s *Service) lockRun(ctx context.Context, tx pgx.Tx, deploymentID string, i
 	if err = verifyIdentity(r.Deployment, i, gh); err != nil {
 		return r, gh, err
 	}
+	// Asked again under the lock: of two first requests, only the one that
+	// gets the lock first records its identity.
+	if granted, err = hasToken(ctx, tx, id); err != nil {
+		return r, gh, err
+	}
+	if !granted {
+		r.Ref, r.TriggerEvent, r.Pipeline = i.Ref, i.EventName, PipelineOf(i)
+		if r.Actor == "" {
+			r.Actor = gh.Actor
+		}
+		if r.TriggeringActor == "" {
+			r.TriggeringActor = gh.TriggeringActor
+		}
+	}
 	return r, gh, nil
+}
+
+// hasToken says whether a run has been given a telemetry token. Tokens are
+// never deleted.
+func hasToken(ctx context.Context, tx pgx.Tx, runID string) (bool, error) {
+	var found bool
+	err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM run_tokens WHERE run_id=$1)", runID).Scan(&found)
+	return found, err
 }
 
 func addMeasured(total **int64, n *int64) {
@@ -96,8 +133,15 @@ func addMeasured(total **int64, n *int64) {
 	}
 	**total += *n
 }
+
+// statusFromGitHub is the run's next status. A run that waits to start stays
+// queued; one that has started does not go back to queued.
 func statusFromGitHub(current string, gh WorkflowRun) string {
-	if gh.Status != "completed" {
+	switch gh.Status {
+	case "completed":
+	case "requested", "queued", "pending", "waiting":
+		return Transition(current, "queued")
+	default:
 		return Transition(current, "running")
 	}
 	next := "failed"

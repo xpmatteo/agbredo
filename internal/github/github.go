@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -131,27 +132,14 @@ func convert(r *gh.WorkflowRun, workflow string) core.WorkflowRun {
 	if r.GetPath() != "" {
 		workflow = path.Base(strings.SplitN(r.GetPath(), "@", 2)[0])
 	}
-	return core.WorkflowRun{Attempt: int64(r.GetRunAttempt()), ID: r.GetID(), URL: r.GetHTMLURL(), Title: r.GetDisplayTitle(), Status: r.GetStatus(), Conclusion: r.GetConclusion(), Workflow: workflow, Ref: r.GetHeadBranch(), Actor: r.GetActor().GetLogin(), TriggeringActor: r.GetTriggeringActor().GetLogin()}
-}
-
-func (b *Backend) GetRun(ctx context.Context, a core.Deployment, id int64) (core.WorkflowRun, error) {
-	c, err := b.client(a.InstallationID)
-	if err != nil {
-		return core.WorkflowRun{}, err
+	run := core.WorkflowRun{Attempt: int64(r.GetRunAttempt()), ID: r.GetID(), URL: r.GetHTMLURL(), Title: r.GetDisplayTitle(), Status: r.GetStatus(), Conclusion: r.GetConclusion(), Workflow: workflow,
+		Repository: r.GetRepository().GetFullName(), HeadBranch: r.GetHeadBranch(), HeadSHA: r.GetHeadSHA(), Event: r.GetEvent(),
+		StartedAt: r.GetRunStartedAt().Time, UpdatedAt: r.GetUpdatedAt().Time, Actor: r.GetActor().GetLogin(), TriggeringActor: r.GetTriggeringActor().GetLogin()}
+	for _, w := range r.ReferencedWorkflows {
+		// The entry's ref is left out on purpose; see core.ReferencedWorkflow.
+		run.Referenced = append(run.Referenced, core.ReferencedWorkflow{Path: w.GetPath(), SHA: w.GetSHA()})
 	}
-	r, _, err := c.Actions.GetWorkflowRunByID(ctx, a.Owner, a.Repository, id)
-	if err != nil {
-		return core.WorkflowRun{}, fmt.Errorf("get GitHub workflow run: %w", err)
-	}
-	workflow := ""
-	if r.GetPath() == "" {
-		w, _, err := c.Actions.GetWorkflowByID(ctx, a.Owner, a.Repository, r.GetWorkflowID())
-		if err != nil {
-			return core.WorkflowRun{}, fmt.Errorf("get GitHub workflow identity: %w", err)
-		}
-		workflow = path.Base(w.GetPath())
-	}
-	return convert(r, workflow), nil
+	return run
 }
 
 func (b *Backend) GetRunAttempt(ctx context.Context, a core.Deployment, id int64, attempt int64) (core.WorkflowRun, error) {
@@ -185,4 +173,38 @@ func VerifyWebhook(secret string, body []byte, signature string) bool {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write(body)
 	return hmac.Equal(got, mac.Sum(nil))
+}
+
+// ErrBadPayload says a webhook payload does not have the shape of its event.
+var ErrBadPayload = errors.New("invalid workflow_run payload")
+
+// ParseWorkflowRunEvent reads a workflow_run webhook payload. Its signature
+// has been checked, so its facts come from GitHub. The X-GitHub-Event header
+// is not signed, though, so the payload must have the shape of a workflow_run
+// event: one of its actions, a workflow_run object with its ID, attempt,
+// workflow path and status, and the same repository as the payload's.
+// Otherwise it is ErrBadPayload.
+func ParseWorkflowRunEvent(body []byte) (core.WorkflowRun, error) {
+	var e gh.WorkflowRunEvent
+	if err := json.Unmarshal(body, &e); err != nil {
+		return core.WorkflowRun{}, ErrBadPayload
+	}
+	switch e.GetAction() {
+	case "requested", "in_progress", "completed":
+	default:
+		return core.WorkflowRun{}, ErrBadPayload
+	}
+	r := e.GetWorkflowRun()
+	repository := e.GetRepo().GetFullName()
+	owner, name, ok := strings.Cut(repository, "/")
+	if r == nil || r.GetID() <= 0 || r.GetRunAttempt() <= 0 || r.GetPath() == "" || r.GetStatus() == "" ||
+		!ok || owner == "" || name == "" || !strings.EqualFold(r.GetRepository().GetFullName(), repository) {
+		return core.WorkflowRun{}, ErrBadPayload
+	}
+	run := convert(r, "")
+	run.Repository = repository
+	if run.Workflow == "" || run.Workflow == "." || run.Workflow == "/" {
+		return core.WorkflowRun{}, ErrBadPayload
+	}
+	return run, nil
 }

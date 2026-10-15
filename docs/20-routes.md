@@ -57,9 +57,9 @@ OpenTelemetry from Claude Code. `Authorization: Bearer agb_...`, the token from 
 GitHub App webhooks. Needs `X-Hub-Signature-256` (HMAC of the body with `AGBREDO_GITHUB_WEBHOOK_SECRET`) and `X-GitHub-Delivery`. Body up to 1 MiB.
 
 - Every delivery with a good signature is archived raw in the telemetry store, if `OTLP_FORWARD_URL` is set, and indexed in `webhook_deliveries` as `handled`, `ignored` or `failed` (see `10-design.md`, Webhook flow). A delivery refused with `401`, `413`, or `400` for its headers (missing or long delivery ID, event name over 100 characters) is neither.
-- Only `workflow_run` events change anything. The server reads the run's state from GitHub and updates a run it already knows. `ping` and other events get `204`.
+- Only `workflow_run` events change anything. The server reads the run from the signed payload, without asking GitHub, and records it under the live deployment of its repository and workflow file, creating the run if it is new, even when the deployment is disabled. A run of a workflow with no deployment is ignored. The payload must have the shape of a `workflow_run` event (see `10-design.md`, Runs from webhooks), or it gets `400`. `ping` and other events get `204`.
 - A handled delivery ID is applied once. A failed one is processed again when GitHub sends it again.
-- `204` on success. Errors: `401` bad signature, `400` missing delivery ID, event name over 100 characters, or bad `workflow_run` payload, `413` too large, `500` GitHub or the database failed.
+- `204` on success. Errors: `401` bad signature, `400` missing delivery ID, event name over 100 characters, or bad `workflow_run` payload, `413` too large, `500` the database failed.
 
 ## Dashboard
 
@@ -74,7 +74,7 @@ For people. A browser session is needed: GitHub OAuth, then a signed cookie. A u
 | `POST /agents/{id}` | Save a deployment. Refused if the revision is old, or with `400` if another deployment has its repository + workflow file |
 | `POST /agents/{id}/delete` | Hide a deployment. Its runs stay |
 | `GET /runs` | All runs |
-| `GET /runs/{id}` | One run: totals, trigger event, ref, pipeline and version, agent runs (Claude Code version, models, effort, usage), event timeline |
+| `GET /runs/{id}` | One run: totals, trigger event, ref, head branch and commit, GitHub start and completion, pipeline and version, agent runs (Claude Code version, models, effort, usage) or "No telemetry received", event timeline |
 | `GET /static/style.css` | The stylesheet |
 
 ## Sign-in

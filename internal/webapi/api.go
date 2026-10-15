@@ -241,11 +241,8 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 		Sender struct {
 			Login string `json:"login"`
 		} `json:"sender"`
-		WorkflowRun struct {
-			ID int64 `json:"id"`
-		} `json:"workflow_run"`
 	}
-	parseErr := json.Unmarshal(body, &payload)
+	_ = json.Unmarshal(body, &payload)
 	d := core.Delivery{ID: delivery, Event: event, Action: payload.Action, Repository: payload.Repository.FullName, InstallationID: payload.Installation.ID}
 	installation := ""
 	if d.InstallationID != 0 {
@@ -265,16 +262,20 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(204)
 		return
 	}
-	if parseErr != nil || payload.WorkflowRun.ID <= 0 {
+	// The signed payload is trusted, but the event header is not signed: the
+	// payload must have the shape of a workflow_run event.
+	run, err := gh.ParseWorkflowRunEvent(body)
+	if err != nil {
 		a.Logger.Warn("webhook rejected", "reason", "invalid workflow_run payload", "delivery", delivery)
-		if err = a.Service.RecordDelivery(ctx, d, core.DeliveryFailed, errors.New("invalid workflow_run payload")); err != nil {
+		if err = a.Service.RecordDelivery(ctx, d, core.DeliveryFailed, gh.ErrBadPayload); err != nil {
 			a.Logger.Error("webhook not indexed", "delivery", delivery, "error", core.Redact(err.Error()))
 		}
 		http.Error(w, "Invalid workflow_run payload", 400)
 		return
 	}
-	a.Logger.Info("webhook received", "delivery", delivery, "event", event, "handled", true, "repository", logValue(payload.Repository.FullName), "github_run_id", payload.WorkflowRun.ID)
-	if err = a.Service.Webhook(ctx, d, payload.WorkflowRun.ID); err != nil {
+	d.Repository = run.Repository // the same, checked by the parser
+	a.Logger.Info("webhook received", "delivery", delivery, "event", event, "handled", true, "repository", logValue(run.Repository), "github_run_id", run.ID, "run_attempt", run.Attempt, "status", logValue(run.Status))
+	if err = a.Service.Webhook(ctx, d, run); err != nil {
 		a.failure(w, err)
 		return
 	}

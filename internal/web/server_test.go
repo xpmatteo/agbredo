@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"agbredo/internal/core"
 )
@@ -147,6 +148,7 @@ func TestRunPageShowsRunRef(t *testing.T) {
 	}{
 		{"own ref", core.Run{ID: "run-1", Ref: "refs/heads/feature", Deployment: core.Deployment{Ref: "main"}}, `<dt>Ref</dt><dd class="mono">refs/heads/feature</dd>`},
 		{"legacy copy", core.Run{ID: "run-1", Deployment: core.Deployment{Ref: "main"}}, `<dt>Ref</dt><dd class="mono">main</dd>`},
+		{"head branch", core.Run{ID: "run-1", HeadBranch: "v1.2", Deployment: core.Deployment{Ref: "main"}}, `<dt>Ref</dt><dd class="mono">v1.2</dd>`},
 		{"none", core.Run{ID: "run-1"}, `<dt>Ref</dt><dd class="mono">Unavailable</dd>`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,6 +157,27 @@ func TestRunPageShowsRunRef(t *testing.T) {
 				t.Fatalf("want %s in %s", tc.want, body)
 			}
 		})
+	}
+}
+
+// A run known only from GitHub shows what GitHub said, and that no
+// telemetry came: its cost and tokens are missing, not zero.
+func TestRunPageOfARunWithoutTelemetry(t *testing.T) {
+	started := time.Date(2026, 10, 15, 7, 8, 0, 0, time.UTC)
+	run := core.Run{ID: "run-1", Status: "completed", HeadBranch: "main", HeadSHA: "4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a", GitHubStartedAt: started}
+	body := serve(&testService{run: run}, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+	for _, want := range []string{"No telemetry received", `<dt>Head branch</dt><dd class="mono">main</dd>`, `<dd class="mono">4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a</dd>`,
+		"<dd>2026-10-15 07:08:00 UTC / Unavailable</dd>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("want %s in %s", want, body)
+		}
+	}
+	if !strings.Contains(body, "<span>Estimated API-equivalent consumption</span><strong>Unavailable</strong>") {
+		t.Fatal("missing cost not shown as missing", body)
+	}
+	runs := serve(&testService{run: run}, testAuth{"admin", true}, http.MethodGet, "/runs", nil).Body.String()
+	if !strings.Contains(runs, "<td>Unavailable<small>") {
+		t.Fatal("runs list shows a missing cost as zero", runs)
 	}
 }
 
@@ -223,9 +246,12 @@ func TestRunPageShowsEachClaudeStepAndKeepsMissingValuesMissing(t *testing.T) {
 	if strings.Contains(fix, "$") || strings.Contains(fix, ">0<") || strings.Count(fix, "Unavailable") < 5 {
 		t.Fatal("missing values shown as zero:", fix)
 	}
+	if strings.Contains(body, "No telemetry received") {
+		t.Fatal("agent runs said to be missing")
+	}
 	s.run.AgentRuns = nil
-	if strings.Contains(serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(), "Agent runs") {
-		t.Fatal("empty table shown")
+	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(); strings.Contains(body, "<th>Agent run</th>") || !strings.Contains(body, "No telemetry received") {
+		t.Fatal("empty table shown", body)
 	}
 }
 

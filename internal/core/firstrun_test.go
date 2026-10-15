@@ -21,7 +21,7 @@ func deploymentCount(t *testing.T, s *Service) int {
 
 // A job of a new repository + workflow file, in GitHub's spelling of the names.
 func newWorkflowRun(f *fakeBackend, runID int64) Identity {
-	f.put(WorkflowRun{ID: runID, Attempt: 1, Workflow: "triage.yml", Ref: "main", Status: "in_progress"})
+	f.put(WorkflowRun{ID: runID, Attempt: 1, Workflow: "triage.yml", HeadBranch: "main", Status: "in_progress"})
 	return Identity{Repository: "Acme/Agent", Workflow: "triage.yml", Ref: "refs/heads/main", RunID: runID, RunAttempt: 1, EventName: "schedule"}
 }
 
@@ -92,11 +92,11 @@ func TestDatabaseFirstRunNeedsTheAppAndAValidRun(t *testing.T) {
 		t.Fatal("token given without the App", err)
 	}
 	f.installations["Acme/Agent"] = 99
-	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: "other.yml", Ref: "main", Status: "in_progress"})
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: "other.yml", HeadBranch: "main", Status: "in_progress"})
 	if _, err := s.MintTokenForWorkflow(ctx, "review", i); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("token given for a run of another workflow", err)
 	}
-	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: "triage.yml", Ref: "main", Status: "completed", Conclusion: "success"})
+	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: "triage.yml", HeadBranch: "main", Status: "completed", Conclusion: "success"})
 	if _, err := s.MintTokenForWorkflow(ctx, "review", i); !errors.Is(err, ErrConflict) {
 		t.Fatal("token given for a finished run", err)
 	}
@@ -174,15 +174,14 @@ func TestDatabaseRepositoryNamesIgnoreCase(t *testing.T) {
 	if _, _, err = s.MintToken(ctx, a.ID, "fix", i); err != nil {
 		t.Fatal("old route", err)
 	}
-	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "completed", Conclusion: "success"})
-	if err = webhook(s, "case", "ACME/AGENT", 777); err != nil {
+	if err = webhook(s, "case", "ACME/AGENT", WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, HeadBranch: "main", Status: "completed", Conclusion: "success"}); err != nil {
 		t.Fatal(err)
 	}
 	if r, _ := s.Run(ctx, attemptRunID(a.ID, 777, 1)); r.Status != "completed" {
 		t.Fatal("webhook in other case ignored", r.Status)
 	}
 	// The workflow file name does not ignore case.
-	f.put(WorkflowRun{ID: 779, Attempt: 1, Workflow: "Agent.yml", Ref: "main", Status: "in_progress"})
+	f.put(WorkflowRun{ID: 779, Attempt: 1, Workflow: "Agent.yml", HeadBranch: "main", Status: "in_progress"})
 	other := Identity{Repository: "acme/agent", Workflow: "Agent.yml", Ref: "refs/heads/main", RunID: 779, RunAttempt: 1, EventName: "push"}
 	if _, _, err = s.MintToken(ctx, a.ID, "review", other); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("workflow file matched in another case", err)
