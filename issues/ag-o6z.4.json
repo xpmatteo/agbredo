@@ -11,9 +11,15 @@
   "id": "ag-o6z.4",
   "labels": [],
   "parent": "ag-o6z",
+  "comments": [
+    {
+      "text": "From ag-o6z.6 review: .audit/body.md is written by Claude, so the PR body may contain extra or fake 'Agbredo-Run:' lines above the real one. The pipeline's trailer is always the LAST line. Decision for linking: use the last matching trailer line in the body; ignore earlier ones.",
+      "timestamp": "2026-10-15T09:19:22Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Record bot PRs and link them to runs: declared, inferred or unlinked, with findings",
   "type": "task",
-  "updated_at": "2026-10-15T08:59:00Z"
+  "updated_at": "2026-10-15T09:19:22Z"
 }
