@@ -30,6 +30,8 @@ type item struct {
 	signal string
 	body   []byte
 	stream string // OpenObserve stream; empty means the store's default
+	// delivery is the GitHub delivery ID of an archived webhook; empty for telemetry.
+	delivery string
 }
 
 // Forwarder posts telemetry in the background. A nil Forwarder drops everything.
@@ -78,15 +80,24 @@ func (f *Forwarder) SendWebhook(delivery, event string, body []byte, attrs map[s
 		f.logger.Warn("webhook not archived", "delivery", delivery, "error", err.Error())
 		return
 	}
-	f.enqueue(item{signal: "logs", body: record, stream: WebhookStream})
+	f.enqueue(item{signal: "logs", body: record, stream: WebhookStream, delivery: delivery})
 }
 
 func (f *Forwarder) enqueue(it item) {
 	select {
 	case f.queue <- it:
 	default:
-		f.logger.Warn("telemetry not forwarded: queue full", "signal", it.signal)
+		f.drop(it, "reason", "queue full")
 	}
+}
+
+// drop logs an item that will not reach the store, saying which webhook it was.
+func (f *Forwarder) drop(it item, args ...any) {
+	if it.delivery != "" {
+		f.logger.Warn("webhook not archived", append([]any{"delivery", it.delivery}, args...)...)
+		return
+	}
+	f.logger.Warn("telemetry not forwarded", append([]any{"signal", it.signal}, args...)...)
 }
 
 // WebhookRecord builds the OTLP JSON logs body for one webhook delivery.
@@ -144,7 +155,7 @@ func (f *Forwarder) Run(ctx context.Context) {
 func (f *Forwarder) post(ctx context.Context, it item) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.url+"/v1/"+it.signal, bytes.NewReader(it.body))
 	if err != nil {
-		f.logger.Warn("telemetry not forwarded", "signal", it.signal, "error", err.Error())
+		f.drop(it, "error", err.Error())
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -154,12 +165,12 @@ func (f *Forwarder) post(ctx context.Context, it item) {
 	}
 	resp, err := f.client.Do(req)
 	if err != nil {
-		f.logger.Warn("telemetry not forwarded", "signal", it.signal, "error", err.Error())
+		f.drop(it, "error", err.Error())
 		return
 	}
 	resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		f.logger.Warn("telemetry not forwarded", "signal", it.signal, "status", resp.StatusCode)
+		f.drop(it, "status", resp.StatusCode)
 	}
 }
 

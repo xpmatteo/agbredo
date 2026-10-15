@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -81,7 +82,7 @@ type Delivery struct {
 
 // Outcomes of a webhook delivery, in webhook_deliveries.
 const (
-	DeliveryHandled = "handled" // it changed what Agbredo records
+	DeliveryHandled = "handled" // applied to a run Agbredo knows
 	DeliveryIgnored = "ignored" // nothing to do: another event, or a run Agbredo does not know
 	DeliveryFailed  = "failed"  // processing failed; a redelivery is processed again
 )
@@ -94,7 +95,7 @@ func (s *Service) RecordDelivery(ctx context.Context, d Delivery, outcome string
 	if problem != nil {
 		t := Redact(problem.Error())
 		if len(t) > 500 {
-			t = t[:500]
+			t = strings.ToValidUTF8(t[:500], "") // a cut may split a character
 		}
 		text = &t
 	}

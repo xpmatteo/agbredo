@@ -258,7 +258,8 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 	if event != "workflow_run" {
 		a.Logger.Info("webhook received", "delivery", delivery, "event", logValue(event), "handled", false)
 		if err = a.Service.RecordDelivery(ctx, d, core.DeliveryIgnored, nil); err != nil {
-			a.failure(w, err)
+			a.Logger.Error("webhook not indexed", "delivery", delivery, "error", core.Redact(err.Error()))
+			http.Error(w, "Webhook not indexed; see server logs", 500)
 			return
 		}
 		w.WriteHeader(204)

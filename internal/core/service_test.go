@@ -372,16 +372,20 @@ func TestDatabaseWebhookDeliveryIndex(t *testing.T) {
 		event != "workflow_run" || action != "completed" || repository != "acme/agent" || installation != 123 {
 		t.Fatalf("%q %q %q %d %v", event, action, repository, installation, err)
 	}
-	// Once handled, a redelivery that would fail or find nothing leaves it handled.
+	// Once handled, a redelivery is not applied again, and one that fails leaves it handled.
 	if err := webhook(s, "flaky", "acme/agent", 777); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordDelivery(ctx, Delivery{ID: "flaky"}, DeliveryFailed, errors.New("late")); err != nil {
-		t.Fatal(err)
+	f.mu.Lock()
+	delete(f.workflows, 777)
+	f.mu.Unlock()
+	if err := webhook(s, "flaky", "acme/agent", 777); err == nil {
+		t.Fatal("failure not reported")
 	}
-	if outcome, _ := deliveryOutcome(t, s, "flaky"); outcome != DeliveryHandled {
-		t.Fatal(outcome)
+	if outcome, problem := deliveryOutcome(t, s, "flaky"); outcome != DeliveryHandled || problem != "" {
+		t.Fatal(outcome, problem)
 	}
+	f.put(gh)
 
 	// A run Agbredo does not know, or another repository: ignored.
 	for _, d := range []struct{ id, repository string }{{"unknown-run", "acme/agent"}, {"other-repo", "evil/repo"}} {
@@ -408,6 +412,49 @@ func TestDatabaseWebhookDeliveryIndex(t *testing.T) {
 	}
 	if outcome, problem := deliveryOutcome(t, s, "unknown-run"); outcome != DeliveryIgnored || problem != "" {
 		t.Fatal(outcome, problem)
+	}
+}
+
+// A delivery for a run Agbredo does not know yet is ignored. Once the run is
+// known, GitHub's redelivery of it is applied.
+func TestDatabaseIgnoredDeliveryIsHandledOnRedelivery(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	a, i := registeredDeployment(t, s, f)
+	gh, _ := f.GetRun(ctx, a, 777)
+	gh.Status, gh.Conclusion = "completed", "success"
+	f.put(gh)
+	if err := webhook(s, "early", "acme/agent", 777); err != nil {
+		t.Fatal(err)
+	}
+	if outcome, _ := deliveryOutcome(t, s, "early"); outcome != DeliveryIgnored {
+		t.Fatal(outcome)
+	}
+	gh.Status, gh.Conclusion = "in_progress", ""
+	f.put(gh)
+	r := startRun(t, s, a.ID, "job", i)
+	gh.Status, gh.Conclusion = "completed", "success"
+	f.put(gh)
+	if err := webhook(s, "early", "acme/agent", 777); err != nil {
+		t.Fatal(err)
+	}
+	if outcome, _ := deliveryOutcome(t, s, "early"); outcome != DeliveryHandled {
+		t.Fatal(outcome)
+	}
+	if read, _ := s.Run(ctx, r.ID); read.Status != "completed" {
+		t.Fatal("redelivery not applied", read.Status)
+	}
+}
+
+// An error cut to 500 bytes stays valid UTF-8, or PostgreSQL refuses it.
+func TestDatabaseDeliveryErrorIsCutOnACharacter(t *testing.T) {
+	s, _ := testService(t)
+	long := strings.Repeat("a", 499) + "é and more"
+	if err := s.RecordDelivery(context.Background(), Delivery{ID: "long"}, DeliveryFailed, errors.New(long)); err != nil {
+		t.Fatal(err)
+	}
+	if _, problem := deliveryOutcome(t, s, "long"); problem != strings.Repeat("a", 499) {
+		t.Fatalf("error %q", problem)
 	}
 }
 
