@@ -7,9 +7,15 @@
   "id": "ag-s99.13",
   "labels": [],
   "parent": "ag-s99",
+  "comments": [
+    {
+      "text": "2026-10-15 discussion with Matt. Matt's idea: use the same list as AGBREDO_ADMIN_USERS as the allowlist. Concerns noted: (1) Admin users are people who log in to the dashboard. The installation account (account.login) is the repo owner, which can be a user or an org. If repos belong to an org (the usual enterprise case), the org name would have to go in AGBREDO_ADMIN_USERS, mixing two meanings and letting a user account with that name pass the login check. (2) Match by login or by id? Logins can be renamed or re-registered; ids are stable but hard to read. Suggested login, with the weakness noted in docs. (3) Suggested option: new AGBREDO_ALLOWED_OWNERS that falls back to AGBREDO_ADMIN_USERS when unset. Single shared list is also acceptable if docs say org names go in the admin list. Open questions for Matt: do the agent repos belong to a personal account or an org? Is the production App private today (README requires 'Only on this account')? Login or id? Shared list or separate variable with fallback? DECISION: postponed. No code changes made.",
+      "timestamp": "2026-10-15T07:33:42Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Restrict which GitHub accounts may create deployments",
   "type": "task",
-  "updated_at": "2026-10-14T15:39:57Z"
+  "updated_at": "2026-10-15T07:33:42Z"
 }
