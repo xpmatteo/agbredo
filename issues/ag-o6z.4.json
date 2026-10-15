@@ -15,11 +15,15 @@
     {
       "text": "From ag-o6z.6 review: .audit/body.md is written by Claude, so the PR body may contain extra or fake 'Agbredo-Run:' lines above the real one. The pipeline's trailer is always the LAST line. Decision for linking: use the last matching trailer line in the body; ignore earlier ones.",
       "timestamp": "2026-10-15T09:19:22Z"
+    },
+    {
+      "text": "2026-10-15: Matt has updated the GitHub App (Pull requests: read, Pull request event subscribed, installations accepted). pull_request deliveries should now arrive.",
+      "timestamp": "2026-10-15T11:12:05Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Record bot PRs and link them to runs: declared, inferred or unlinked, with findings",
   "type": "task",
-  "updated_at": "2026-10-15T10:45:06Z"
+  "updated_at": "2026-10-15T11:12:05Z"
 }
