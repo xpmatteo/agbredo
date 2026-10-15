@@ -218,6 +218,7 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid GitHub webhook signature", 401)
 		return
 	}
+	a.Logger.Info("webhook body", "delivery", logValue(delivery), "event", logValue(event), "body", string(body))
 	if delivery == "" || len(delivery) > 160 {
 		a.Logger.Warn("webhook rejected", "reason", "missing or long delivery ID", "event", logValue(event))
 		http.Error(w, "GitHub delivery ID is required", 400)
