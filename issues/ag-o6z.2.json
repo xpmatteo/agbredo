@@ -11,9 +11,15 @@
   "id": "ag-o6z.2",
   "labels": [],
   "parent": "ag-o6z",
+  "comments": [
+    {
+      "text": "From ag-o6z.1 review: (1) X-GitHub-Event header is not signed; a replayed signed body could be relabelled with another event name. When reading facts from the payload, check that its shape matches the event (e.g. workflow_run object present for event workflow_run). (2) webhook_deliveries dedupes per delivery, not per run: a delivery is handled once overall. Fine while one workflow_run delivery maps to one run; keep in mind if one delivery updates several records.",
+      "timestamp": "2026-10-15T09:30:54Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Record every run of a live deployment from workflow_run webhooks, with or without telemetry",
   "type": "task",
-  "updated_at": "2026-10-15T08:59:00Z"
+  "updated_at": "2026-10-15T09:30:54Z"
 }
