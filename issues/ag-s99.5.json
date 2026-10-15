@@ -2,6 +2,8 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-15T07:25:53Z",
+  "close_reason": "Done and deployed (main). 2026-10-15 Matt: keep both effort sources for now (claude_code.llm_request span and the effort attribute on token/cost metrics).",
   "created": "2026-10-14T12:22:58Z",
   "description": "DESIGN TALK (stored data).\n\nGoal: a run records its configuration. Glossary (docs/00-glossary.md): configuration = trigger event, ref, threshold at the time, Claude Code version, model and effort.\n\nAlready stored: the threshold (copied into the run from the registration) and the Claude Code version (per source, from reports and telemetry; see Run.Sources in internal/core/model.go).\n\nMissing: trigger event (the OIDC identity has EventName, internal/auth/oidc.go, but the run does not keep it), the run's ref (see ag-s99.3), model and effort.\n\nModel and effort would come from Claude Code telemetry (internal/core/telemetry.go reads OTLP). Check which OTLP attributes carry them. They belong per agent run (source), since each Claude Code step can differ.\n\nRules: the server keeps only a fixed list of fields, never prompts or output (CLAUDE.md principles; docs/10-design.md \"Trust\"). Missing values stay missing. Ask Matt before adding fields.",
   "id": "ag-s99.5",
@@ -26,8 +28,8 @@
     }
   ],
   "priority": 2,
-  "status": "open",
+  "status": "closed",
   "title": "Record run configuration: trigger event, model, effort",
   "type": "task",
-  "updated_at": "2026-10-14T15:59:33Z"
+  "updated_at": "2026-10-15T07:25:53Z"
 }
