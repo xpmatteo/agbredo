@@ -25,9 +25,15 @@ type fakeBackend struct {
 	// none that GitHub gives: ListJobs fails. jobCalls counts the calls.
 	jobs     map[int64][]Job
 	jobCalls int
+	// beforeList, if set, runs at the start of each ListJobs call, as if
+	// while GitHub answers.
+	beforeList func()
 }
 
 func (f *fakeBackend) ListJobs(_ context.Context, _ Deployment, id, _ int64) ([]Job, error) {
+	if f.beforeList != nil {
+		f.beforeList()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.jobCalls++

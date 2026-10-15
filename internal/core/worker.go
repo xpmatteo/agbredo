@@ -12,8 +12,7 @@ import (
 )
 
 // Work periodically reconciles open runs with GitHub, covering lost
-// webhooks, and fetches the jobs of finished runs. A webhook that finishes a
-// run wakes it to fetch that run's jobs at once.
+// webhooks, then fetches the jobs of finished runs.
 func (s *Service) Work(ctx context.Context, logger *slog.Logger) {
 	poll := time.NewTicker(30 * time.Second)
 	defer poll.Stop()
@@ -27,9 +26,8 @@ func (s *Service) Work(ctx context.Context, logger *slog.Logger) {
 				logger.Error("reconcile", "error", Redact(err.Error()))
 			}
 			cancel()
-		case <-s.jobsSignal():
-			workCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-			if err := s.FetchJobs(workCtx); err != nil {
+			jobsCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			if err := s.FetchJobs(jobsCtx); err != nil {
 				logger.Error("fetch jobs", "error", Redact(err.Error()))
 			}
 			cancel()
@@ -145,9 +143,6 @@ func (s *Service) Webhook(ctx context.Context, d Delivery, gh WorkflowRun) error
 	if err != nil {
 		outcome = DeliveryFailed
 	} else if handled {
-		if finished(gh) {
-			s.jobsMayBeDue() // the worker asks GitHub; the delivery does not wait
-		}
 		return nil // indexed with the run, in its transaction
 	}
 	// The request may have timed out; the index is still written.
@@ -255,7 +250,7 @@ func runsPullRequestWorkflow(event string) bool {
 
 // Reconcile polls GitHub for the runs that have not finished. A run waiting
 // for approval is left out: it may wait for days, and the approval's webhook
-// moves it on. Then it fetches the jobs of finished runs (FetchJobs).
+// moves it on. The jobs of finished runs are fetched apart (FetchJobs).
 func (s *Service) Reconcile(ctx context.Context) error {
 	rows, err := s.DB.Query(ctx, "SELECT document FROM runs WHERE status IN ('queued','running') AND document->>'awaiting_approval' IS DISTINCT FROM 'true' ORDER BY created_at")
 	if err != nil {
@@ -274,5 +269,5 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			return e
 		}
 	}
-	return s.FetchJobs(ctx)
+	return nil
 }

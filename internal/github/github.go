@@ -184,6 +184,9 @@ func (b *Backend) ListJobs(ctx context.Context, a core.Deployment, id, attempt i
 			return nil, fmt.Errorf("list GitHub workflow jobs: %w", err)
 		}
 		for _, j := range page.Jobs {
+			if j == nil {
+				continue
+			}
 			jobs = append(jobs, convertJob(j))
 		}
 		if resp.NextPage == 0 || len(jobs) >= core.MaxJobs {

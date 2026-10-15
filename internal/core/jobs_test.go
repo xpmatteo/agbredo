@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -125,6 +126,14 @@ func finishedNow(id int64, conclusion string) WorkflowRun {
 	return gh
 }
 
+// workPass is one pass of the worker (see Work): the poll, then the jobs.
+func workPass(ctx context.Context, s *Service) error {
+	if err := s.Reconcile(ctx); err != nil {
+		return err
+	}
+	return s.FetchJobs(ctx)
+}
+
 // makeDue lets the next pass ask GitHub again for a run whose last call failed.
 func makeDue(s *Service, runID string) {
 	s.jobsRetries.mu.Lock()
@@ -155,24 +164,14 @@ func TestDatabaseFinishedRunGetsItsJobsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A run that has not finished is not asked.
-	if err = s.Reconcile(ctx); err != nil {
+	if err = workPass(ctx, s); err != nil {
 		t.Fatal(err)
 	}
 	if f.calls() != 0 {
 		t.Fatalf("%d calls for a queued run", f.calls())
 	}
-	select {
-	case <-s.jobsSignal():
-		t.Fatal("woke the worker for a queued run")
-	default:
-	}
 	if err = webhook(s, "completed", "acme/agent", finishedNow(777, "success")); err != nil {
 		t.Fatal(err)
-	}
-	select {
-	case <-s.jobsSignal():
-	default:
-		t.Fatal("the completed webhook did not wake the worker")
 	}
 
 	// GitHub does not answer: the jobs stay unknown.
@@ -183,16 +182,16 @@ func TestDatabaseFinishedRunGetsItsJobsOnce(t *testing.T) {
 		t.Fatal(r.Jobs, f.calls())
 	}
 	// Not asked again at once.
-	if err = s.Reconcile(ctx); err != nil {
+	if err = workPass(ctx, s); err != nil {
 		t.Fatal(err)
 	}
 	if f.calls() != 1 {
 		t.Fatalf("asked again without waiting: %d calls", f.calls())
 	}
-	// After the delay, Reconcile asks again and records the jobs.
+	// After the delay, the worker's next pass asks again and records the jobs.
 	f.putJobs(777, gateSkip())
 	makeDue(s, id)
-	if err = s.Reconcile(ctx); err != nil {
+	if err = workPass(ctx, s); err != nil {
 		t.Fatal(err)
 	}
 	r, err := s.Run(ctx, id)
@@ -206,7 +205,7 @@ func TestDatabaseFinishedRunGetsItsJobsOnce(t *testing.T) {
 	if err = webhook(s, "late", "acme/agent", finishedNow(777, "success")); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.Reconcile(ctx); err != nil {
+	if err = workPass(ctx, s); err != nil {
 		t.Fatal(err)
 	}
 	if f.calls() != 2 {
@@ -230,7 +229,7 @@ func TestDatabaseNoJobsIsAnAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if err = s.Reconcile(ctx); err != nil {
+		if err = workPass(ctx, s); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -316,5 +315,119 @@ func TestDatabaseJobsAreAskedWithinBounds(t *testing.T) {
 	}
 	if f.calls() != 1+jobsPerPass+2 {
 		t.Fatalf("%d calls", f.calls())
+	}
+}
+
+// A list with a job not yet completed is a snapshot: it is not kept, and the
+// run is asked again later. Steps are not checked: a cancelled job's steps
+// can stay pending.
+func TestDatabaseJobsNotYetCompletedAreAskedAgain(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	a, err := s.SaveDeployment(ctx, validDeployment())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := attemptRunID(a.ID, 777, 1)
+	f.putJobs(777, []Job{{ID: 1, Name: "audit / audit", Status: "completed", Conclusion: "success"}, {ID: 2, Name: "report", Status: "in_progress"}})
+	if err = webhook(s, "completed", "acme/agent", finishedNow(777, "cancelled")); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.FetchJobs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := s.Run(ctx, id); r.Jobs != nil || f.calls() != 1 || s.jobsRetries.due(id, now()) {
+		t.Fatal("kept a snapshot, or asks again at once", r.Jobs, f.calls())
+	}
+	final := []Job{{ID: 1, Name: "audit / audit", Status: "completed", Conclusion: "success"},
+		{ID: 2, Name: "report", Status: "completed", Conclusion: "cancelled", Steps: []Step{{Number: 1, Name: "Report", Status: "pending"}}}}
+	f.putJobs(777, final)
+	makeDue(s, id)
+	if err = s.FetchJobs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := s.Run(ctx, id); !reflect.DeepEqual(r.Jobs, final) || f.calls() != 2 {
+		t.Fatal(r.Jobs, f.calls())
+	}
+}
+
+// A call that the pass's context cut short does not put the run on hold.
+func TestDatabaseJobsCutShortAreNotPutOnHold(t *testing.T) {
+	s, f := testService(t)
+	a, err := s.SaveDeployment(context.Background(), validDeployment())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = webhook(s, "completed", "acme/agent", finishedNow(777, "success")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	f.beforeList = cancel // GitHub gives no jobs for 777, and the context ends meanwhile
+	if err = s.FetchJobs(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if id := attemptRunID(a.ID, 777, 1); !s.jobsRetries.due(id, now()) {
+		t.Fatal("put on hold")
+	}
+}
+
+// Runs without GitHub's completion time count from when Agbredo last changed them.
+func TestDatabaseJobsWindowWithoutCompletionTime(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	a, err := s.SaveDeployment(ctx, validDeployment())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := attemptRunID(a.ID, 777, 1)
+	f.putJobs(777, gateSkip())
+	if err = webhook(s, "completed", "acme/agent", finishedNow(777, "success")); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		age   string
+		calls int
+	}{{"25 hours", 0}, {"1 hour", 1}} {
+		if _, err = s.DB.Exec(ctx, "UPDATE runs SET document = document - 'github_completed_at', updated_at = now() - $2::interval WHERE id=$1", id, tc.age); err != nil {
+			t.Fatal(err)
+		}
+		if err = s.FetchJobs(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if f.calls() != tc.calls {
+			t.Fatalf("changed %s ago: %d calls", tc.age, f.calls())
+		}
+	}
+	if r, _ := s.Run(ctx, id); !reflect.DeepEqual(r.Jobs, gateSkip()) {
+		t.Fatal(r.Jobs)
+	}
+}
+
+// Two servers that ask at once keep one list: the first saved.
+func TestDatabaseJobsOfTwoServersKeepOneList(t *testing.T) {
+	s, f := testService(t)
+	other := &Service{DB: s.DB, Backend: f}
+	ctx := context.Background()
+	a, err := s.SaveDeployment(ctx, validDeployment())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.putJobs(777, gateSkip())
+	if err = webhook(s, "completed", "acme/agent", finishedNow(777, "success")); err != nil {
+		t.Fatal(err)
+	}
+	// While s waits for GitHub, the other server gets and saves the jobs; then
+	// GitHub gives s another list.
+	var inner error
+	f.beforeList = func() {
+		f.beforeList = nil
+		inner = other.FetchJobs(ctx)
+		f.putJobs(777, []Job{{ID: 9, Name: "late", Status: "completed"}})
+	}
+	if err = s.FetchJobs(ctx); err != nil || inner != nil {
+		t.Fatal(err, inner)
+	}
+	if r, _ := s.Run(ctx, attemptRunID(a.ID, 777, 1)); !reflect.DeepEqual(r.Jobs, gateSkip()) || f.calls() != 2 {
+		t.Fatal(r.Jobs, f.calls())
 	}
 }

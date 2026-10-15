@@ -87,21 +87,6 @@ func (j *jobsRetries) succeeded(runID string) {
 	delete(j.runs, runID)
 }
 
-// jobsSignal is the channel that tells the worker that a run has finished
-// and may need its jobs. It holds at most one signal.
-func (s *Service) jobsSignal() chan struct{} {
-	s.jobsOnce.Do(func() { s.jobsDue = make(chan struct{}, 1) })
-	return s.jobsDue
-}
-
-// jobsMayBeDue wakes the worker to fetch jobs, without waiting for its next poll.
-func (s *Service) jobsMayBeDue() {
-	select {
-	case s.jobsSignal() <- struct{}{}:
-	default:
-	}
-}
-
 // FetchJobs asks GitHub for the jobs and steps of finished runs that have
 // none yet, and records them. A run is asked once: a run with jobs, even an
 // empty list, is not asked again. The call to GitHub is made outside any
@@ -110,9 +95,17 @@ func (s *Service) jobsMayBeDue() {
 // the run finished less than jobsWindow ago. At most jobsPerPass runs are
 // asked per pass, newest first.
 //
-// It returns an error only when the database fails.
+// GitHub's answer is kept only once every job in it has completed. A list
+// with a job still queued or in progress is a snapshot, not the final
+// answer: it is not saved, and the run is asked again like after a failed
+// call. Steps are not checked: a cancelled job's steps can stay pending.
+//
+// It returns an error when the database fails, or when ctx ends; a run is
+// not put on hold for a call that ctx cut short.
 func (s *Service) FetchJobs(ctx context.Context) error {
-	// When GitHub finished the run; for runs without that time, when Agbredo last changed it.
+	// When GitHub finished the run; for runs without that time, when Agbredo
+	// last changed it. Two clocks: updated_at is set by the database's now(),
+	// the cutoff by the server's. They are close enough for a day's window.
 	rows, err := s.DB.Query(ctx, `SELECT document FROM runs
 		WHERE status IN ('completed','failed','cancelled') AND document->'jobs' IS NULL
 			AND COALESCE((document->>'github_completed_at')::timestamptz, updated_at) > $1
@@ -135,8 +128,16 @@ func (s *Service) FetchJobs(ctx context.Context) error {
 		asked++
 		jobs, e := s.Backend.ListJobs(ctx, r.Deployment, r.GitHubRunID, r.RunAttempt)
 		if e != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			s.jobsRetries.failed(r.ID, now())
 			slog.Warn("list GitHub jobs of run", "run", r.ID, "error", Redact(e.Error()))
+			continue
+		}
+		if !allCompleted(jobs) {
+			s.jobsRetries.failed(r.ID, now())
+			slog.Warn("GitHub listed jobs of a finished run that have not completed; asking again later", "run", r.ID)
 			continue
 		}
 		s.jobsRetries.succeeded(r.ID)
@@ -145,6 +146,16 @@ func (s *Service) FetchJobs(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// allCompleted says whether every job of a list has completed.
+func allCompleted(jobs []Job) bool {
+	for _, j := range jobs {
+		if j.Status != "completed" {
+			return false
+		}
+	}
+	return true
 }
 
 // saveJobs records the jobs of a run, in a short transaction, if the run has

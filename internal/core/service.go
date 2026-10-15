@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -19,9 +18,7 @@ type Service struct {
 	// first run (see MintTokenForWorkflow).
 	DefaultThresholdMicros int64
 
-	// The worker fetches the jobs of finished runs (see FetchJobs).
-	jobsOnce    sync.Once
-	jobsDue     chan struct{}
+	// Runs whose jobs GitHub did not give yet (see FetchJobs).
 	jobsRetries jobsRetries
 }
 
