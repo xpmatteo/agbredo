@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-15T08:58:42Z",
+  "description": "Part of the webhook audit trail epic; read the epic first. Work is in the central pipelines repo xpmatteo/agbredo-pipelines (local checkout ../pipelines next to this repo), not in agbredo. That repo has no bw tracker, so its tickets live here.\n\n## Goal\n\nThe agent instructions audit pipeline marks each PR it opens with the run that opened it, so Agbredo can link it as \"declared\".\n\n## What to build\n\n- actions/agent-instructions-audit/scripts/open-pr.sh: add a line `Agbredo-Run: $GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT` on its own line at the end of .audit/pr.md (after the existing run footer). Keep the existing footer.\n- README.md: a short section \"Marking escalations for Agbredo\": any pipeline that opens a PR adds this trailer line to the PR body; Agbredo links the PR to the run only when the PR author is a bot, the branch is in the same repository and the PR was opened during that run; otherwise the PR is still recorded, as inferred or unlinked, with a finding.\n- Release: callers pin `@v1`, and v1 is a tag (`git ls-remote` shows refs/tags/v1). Releasing means moving the v1 tag, which changes what every caller runs next. Ask Matt before moving it. See the README \"Versions\" section and ticket ag-s99.10 for how it was done before.\n\n## How to check\n\nRun the audit once (workflow_dispatch in xpmatteo/rpg-interpreter, after closing open audit PR so the gate does not skip) and see the trailer in the new PR body. With the PR ticket deployed, the run page shows the PR as declared.",
+  "id": "ag-o6z.6",
+  "labels": [],
+  "parent": "ag-o6z",
+  "priority": 2,
+  "status": "open",
+  "title": "Pipelines: add the Agbredo-Run trailer to audit PRs",
+  "type": "task",
+  "updated_at": "2026-10-15T08:58:42Z"
+}
