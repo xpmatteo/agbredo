@@ -11,9 +11,15 @@
   "id": "ag-o6z.3",
   "labels": [],
   "parent": "ag-o6z",
+  "comments": [
+    {
+      "text": "Built on branch ag-o6z.3/jobs-and-steps, commit e7692be (not merged, not pushed). No migration: Run.Jobs []Job with json 'jobs,omitzero' (nil = unknown, no key; [] = GitHub listed none, kept as an answer); Job/Step times omitzero. Backend.ListJobs (github: ListWorkflowJobsAttempt, per_page 100, stops at 50 jobs, max 5 pages, a failed page = error and no jobs, empty = []). core/jobs.go: FetchJobs selects terminal runs with no jobs key finished in the last 24 h (COALESCE(github_completed_at, updated_at column)), newest first, at most 5 GitHub calls per pass, skips runs in backoff; call outside tx; saveJobs re-reads FOR UPDATE and sets Jobs only if still nil and terminal. Backoff in memory (Service.jobsRetries): 1 min doubling to 1 h, forgotten on restart; 24 h window ends retries (stale installation). Trigger: Webhook, after a handled delivery with a finished state, sends a non-blocking signal on a 1-slot channel; Work's loop runs FetchJobs on it; Reconcile also calls FetchJobs after polling. So the webhook response never waits on GitHub. limitJobs: 50 jobs, 100 steps, names/status/conclusion/runner cut to 200 runes on a UTF-8 boundary (invalid bytes dropped), URL kept only if https://github.com/ and \u003c=500 bytes. Run page: 'Jobs and steps' after Agent runs: one panel per job (linked name, outcome badge = conclusion or status, start/end, runner), steps table with numbers as given; missing times 'Unavailable'; notes for [] / unknown (finished) / not finished; note when a limit was reached. Docs: design (Parts, Flow 8, new 'Jobs and steps' section, Data runs, Limits), routes (run page), glossary (Run). Tests: limitJobs, JSON nil-vs-empty round trip, backoff, github ListJobs conversion/paging/empty/failure/stop at cap, DB: jobs once + failed call retried by Reconcile after delay + webhook wakes worker, empty list not re-fetched, bounds (old run, approval, running, past window, per pass, newest first), web page. make test passes with DB tests.",
+      "timestamp": "2026-10-15T11:01:51Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Record the jobs and steps of each run when it completes",
   "type": "task",
-  "updated_at": "2026-10-15T10:55:47Z"
+  "updated_at": "2026-10-15T11:01:51Z"
 }
