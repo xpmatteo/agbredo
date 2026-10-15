@@ -174,7 +174,7 @@ func TestDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
 	s.run.ClaudeUsage = &core.ClaudeUsage{InputTokens: &zero}
 	s.run.EstimatedCostAvailable = true
 	w = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil)
-	if !strings.Contains(w.Body.String(), "$0.000000") || !strings.Contains(w.Body.String(), "<strong>0</strong>") {
+	if !strings.Contains(w.Body.String(), "$0.00") || !strings.Contains(w.Body.String(), "<strong>0</strong>") {
 		t.Fatal("measured zero lost", w.Body.String())
 	}
 }
@@ -217,7 +217,7 @@ func TestRunPageShowsEachClaudeStepAndKeepsMissingValuesMissing(t *testing.T) {
 	review = review[:strings.Index(review, "</tr>")]
 	fix := body[strings.Index(body, ">fix<"):]
 	fix = fix[:strings.Index(fix, "</tr>")]
-	if !strings.Contains(review, "2.1.296") || !strings.Contains(review, "$0.000000") || !strings.Contains(review, "1200") || !strings.Contains(review, "<td>Unavailable / Unavailable</td>") {
+	if !strings.Contains(review, "2.1.296") || !strings.Contains(review, "$0.00") || !strings.Contains(review, "1200") || !strings.Contains(review, "<td>Unavailable / Unavailable</td>") {
 		t.Fatal("measured values wrong:", review)
 	}
 	if strings.Contains(fix, "$") || strings.Contains(fix, ">0<") || strings.Count(fix, "Unavailable") < 5 {
@@ -319,5 +319,13 @@ func TestRunPageShowsConfiguration(t *testing.T) {
 	s.run.TriggerEvent = ""
 	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(); !strings.Contains(body, `<dt>Trigger event</dt><dd class="mono">Unavailable</dd>`) {
 		t.Fatalf("older run: %s", body)
+	}
+}
+
+func TestMoneyShowsTwoDigits(t *testing.T) {
+	for micros, want := range map[int64]string{0: "$0.00", 1: "$0.00", 4_999: "$0.00", 5_000: "$0.01", 12_345_678: "$12.35", 5_000_000: "$5.00", 999_995_000: "$1000.00"} {
+		if got := money(micros); got != want {
+			t.Errorf("money(%d) = %s, want %s", micros, got, want)
+		}
 	}
 }

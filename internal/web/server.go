@@ -59,12 +59,13 @@ type page struct {
 
 func New(service Service, auth Auth) *Server {
 	funcs := template.FuncMap{
-		"usd": money,
+		"money":    money,
+		"usdInput": usdInput,
 		"runCost": func(r core.Run) string {
 			if !r.EstimatedCostAvailable {
 				return "Unavailable"
 			}
-			return "$" + money(r.CostMicros)
+			return money(r.CostMicros)
 		},
 		"runTokens": runTokens,
 		"runRef":    runRef,
@@ -72,7 +73,7 @@ func New(service Service, auth Auth) *Server {
 			if u.CostNanos == nil {
 				return "Unavailable"
 			}
-			return "$" + money(u.CostMicros())
+			return money(u.CostMicros())
 		},
 		"agentRunTokens": func(u *core.AgentRunUsage, kind string) string {
 			return usageTokens(u.Usage, kind)
@@ -265,7 +266,21 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "run", page{Title: run.Deployment.Name + " · Run", Run: run, Events: events})
 }
 
-func money(micros int64) string { return fmt.Sprintf("%d.%06d", micros/1_000_000, micros%1_000_000) }
+// money is the one way to show an amount of money: dollars with two digits,
+// rounded half up. All templates and helpers use it.
+func money(micros int64) string {
+	cents := micros / 10_000
+	if micros%10_000 >= 5_000 {
+		cents++
+	}
+	return fmt.Sprintf("$%d.%02d", cents/100, cents%100)
+}
+
+// usdInput is for form fields only. It keeps all six decimals so that saving
+// a form does not change the stored value.
+func usdInput(micros int64) string {
+	return fmt.Sprintf("%d.%06d", micros/1_000_000, micros%1_000_000)
+}
 
 func measured(n *int64) string {
 	if n == nil {
