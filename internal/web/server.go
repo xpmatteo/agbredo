@@ -162,7 +162,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	p := page{Title: "Agbredo — Agent Fleet Control Plane", Fleet: f}
+	p := page{Title: "Agbredo — agent farm control plane", Fleet: f}
 	for _, run := range f.Runs {
 		switch run.Status {
 		case "queued", "running":
