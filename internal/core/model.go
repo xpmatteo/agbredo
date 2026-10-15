@@ -99,8 +99,12 @@ type Run struct {
 	// (updated_at of the first completed state Agbredo saw). Missing when unknown.
 	GitHubStartedAt   time.Time `json:"github_started_at,omitzero"`
 	GitHubCompletedAt time.Time `json:"github_completed_at,omitzero"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	// AwaitingApproval says the queued run waits for a maintainer to approve
+	// it (GitHub's action_required, e.g. a pull request from a fork). The poll
+	// leaves it alone; the approval's webhook moves it on.
+	AwaitingApproval bool      `json:"awaiting_approval,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 	// Per agent run, from telemetry sent straight to Agbredo. The totals above include these.
 	// The JSON key "sources" is kept on purpose: stored rows and clients use it.
 	AgentRuns map[string]*AgentRunUsage `json:"sources,omitempty"`

@@ -10,9 +10,10 @@ import (
 // docs/00-glossary.md). GitHub supplies both: in the job's OIDC token
 // (job_workflow_ref, job_workflow_sha) at the run's first telemetry token, or,
 // for a run that asked for no token, in the referenced_workflows of its
-// workflow_run webhook. Either way the pipeline cannot fake them. A
-// pull_request run has none: it runs the pull request's workflow file, which
-// a fork's author controls. They are only recorded and shown: the identity of
+// workflow_run webhook. Either way the pipeline cannot fake them. A run of a
+// pull request event (pull_request, pull_request_review,
+// pull_request_review_comment; not pull_request_target) has none: it runs the
+// pull request's workflow file, which a fork's author controls. They are only recorded and shown: the identity of
 // a run is always its caller workflow.
 type Pipeline struct {
 	// Path of the reusable workflow, e.g. org/agents/.github/workflows/triage.yml.

@@ -161,5 +161,10 @@ func statusFromGitHub(current string, gh WorkflowRun) string {
 // finished says whether GitHub has finished the run attempt. A completed run
 // that waits for approval (conclusion action_required) has not.
 func finished(gh WorkflowRun) bool {
-	return gh.Status == "completed" && gh.Conclusion != "action_required"
+	return gh.Status == "completed" && !awaitsApproval(gh)
+}
+
+// awaitsApproval says whether the run attempt waits for a maintainer's approval.
+func awaitsApproval(gh WorkflowRun) bool {
+	return gh.Status == "action_required" || (gh.Status == "completed" && gh.Conclusion == "action_required")
 }

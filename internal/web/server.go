@@ -174,7 +174,10 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	for _, run := range f.Runs {
 		switch run.Status {
 		case "queued", "running":
-			p.Active++
+			// A run waiting for a maintainer's approval is not active.
+			if !run.AwaitingApproval {
+				p.Active++
+			}
 		case "failed":
 			p.Failed++
 		}

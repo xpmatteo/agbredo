@@ -70,6 +70,8 @@ func applyWorkflowRun(ctx context.Context, tx pgx.Tx, r Run, gh WorkflowRun) err
 	if r.GitHubStartedAt.IsZero() {
 		r.GitHubStartedAt = gh.StartedAt
 	}
+	// Set again by each GitHub state, so an approval, or any other news of the run, clears it.
+	r.AwaitingApproval = r.Status == "queued" && awaitsApproval(gh)
 	if r.GitHubCompletedAt.IsZero() && finished(gh) {
 		r.GitHubCompletedAt = gh.UpdatedAt
 	}
@@ -213,15 +215,17 @@ func (s *Service) webhook(ctx context.Context, d Delivery, gh WorkflowRun) (bool
 // of its jobs asked for a telemetry token. It has no ref, which only the OIDC
 // identity gives; the first token request adds it (see lockRun).
 //
-// A pull_request run runs the workflow file of the pull request, which the
-// author of a fork controls, so its referenced workflows say nothing
-// reliable: it records no pipeline. The OIDC path refuses pull_request runs
-// for the same reason.
+// A run of a pull request event (pull_request, pull_request_review,
+// pull_request_review_comment) runs the workflow file of the pull request,
+// which the author of a fork controls, so its referenced workflows say
+// nothing reliable: it records no pipeline. pull_request_target runs the base
+// repository's file, and keeps it. The token path refuses pull request events
+// and refs for the same reason.
 func newRunFromWebhook(a Deployment, gh WorkflowRun) Run {
 	id := attemptRunID(a.ID, gh.ID, gh.Attempt)
 	r := Run{ID: id, CorrelationID: id, Deployment: a, GitHubRunID: gh.ID, RunAttempt: gh.Attempt, Status: "queued", ThresholdMicros: a.ThresholdMicros,
 		TriggerEvent: gh.Event, Actor: gh.Actor, TriggeringActor: gh.TriggeringActor, CreatedAt: now(), UpdatedAt: now()}
-	if gh.Event != "pull_request" {
+	if !runsPullRequestWorkflow(gh.Event) {
 		r.Pipeline = PipelineOfRun(gh)
 	}
 	r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, gh.ID)
@@ -232,8 +236,17 @@ func newRunFromWebhook(a Deployment, gh WorkflowRun) Run {
 	return r
 }
 
+// runsPullRequestWorkflow says whether a run of this event runs the workflow
+// file of a pull request rather than the base repository's.
+func runsPullRequestWorkflow(event string) bool {
+	return strings.HasPrefix(event, "pull_request") && event != "pull_request_target"
+}
+
+// Reconcile polls GitHub for the runs that have not finished. A run waiting
+// for approval is left out: it may wait for days, and the approval's webhook
+// moves it on.
 func (s *Service) Reconcile(ctx context.Context) error {
-	rows, err := s.DB.Query(ctx, "SELECT document FROM runs WHERE status IN ('queued','running') ORDER BY created_at")
+	rows, err := s.DB.Query(ctx, "SELECT document FROM runs WHERE status IN ('queued','running') AND document->>'awaiting_approval' IS DISTINCT FROM 'true' ORDER BY created_at")
 	if err != nil {
 		return err
 	}

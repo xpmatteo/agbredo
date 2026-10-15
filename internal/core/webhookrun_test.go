@@ -91,13 +91,24 @@ func TestDatabaseWebhookRecordsARunWithoutTelemetry(t *testing.T) {
 	// Runs triggered by pull requests are recorded too; they still get no
 	// token. Their pipeline is not recorded: a fork's author controls the
 	// workflow file of a pull_request run.
-	pr := auditRun(778, "completed", "success")
-	pr.Event = "pull_request"
-	if err = webhook(s, "pr", "acme/agent", pr); err != nil {
+	for n, event := range []string{"pull_request", "pull_request_review", "pull_request_review_comment"} {
+		pr := auditRun(int64(778+n), "completed", "success")
+		pr.Event = event
+		if err = webhook(s, event, "acme/agent", pr); err != nil {
+			t.Fatal(err)
+		}
+		if r, _ = s.Run(ctx, attemptRunID(a.ID, pr.ID, 1)); r.TriggerEvent != event || r.Status != "completed" || r.Pipeline != nil {
+			t.Fatal(event, r.TriggerEvent, r.Status, r.Pipeline)
+		}
+	}
+	// pull_request_target runs the base repository's workflow file: its pipeline is kept.
+	target := auditRun(790, "completed", "success")
+	target.Event = "pull_request_target"
+	if err = webhook(s, "target", "acme/agent", target); err != nil {
 		t.Fatal(err)
 	}
-	if r, _ = s.Run(ctx, attemptRunID(a.ID, 778, 1)); r.TriggerEvent != "pull_request" || r.Status != "completed" || r.Pipeline != nil {
-		t.Fatal(r.TriggerEvent, r.Status, r.Pipeline)
+	if r, _ = s.Run(ctx, attemptRunID(a.ID, 790, 1)); !reflect.DeepEqual(r.Pipeline, want) {
+		t.Fatal("pull_request_target lost its pipeline", r.Pipeline)
 	}
 }
 
@@ -105,7 +116,7 @@ func TestDatabaseWebhookRecordsARunWithoutTelemetry(t *testing.T) {
 // run that waits for a maintainer's approval (action_required) is not
 // finished: it stays queued, and the approval moves it on.
 func TestDatabaseWebhookStatusFromConclusions(t *testing.T) {
-	s, _ := testService(t)
+	s, f := testService(t)
 	ctx := context.Background()
 	a, err := s.SaveDeployment(ctx, validDeployment())
 	if err != nil {
@@ -124,12 +135,30 @@ func TestDatabaseWebhookStatusFromConclusions(t *testing.T) {
 			t.Fatalf("%s: status %s, completed at %v", c.conclusion, r.Status, r.GitHubCompletedAt)
 		}
 	}
-	approved := auditRun(807, "in_progress", "")
-	if err = webhook(s, "approved", "acme/agent", approved); err != nil {
+	// The run waiting for approval is not polled: it may wait for days.
+	waiting := attemptRunID(a.ID, 807, 1)
+	if r, _ := s.Run(ctx, waiting); !r.AwaitingApproval {
+		t.Fatal("not marked as waiting for approval")
+	}
+	f.put(auditRun(807, "completed", "success"))
+	if err = s.Reconcile(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if r, _ := s.Run(ctx, attemptRunID(a.ID, 807, 1)); r.Status != "running" {
-		t.Fatal("approval did not move the run on", r.Status)
+	if r, _ := s.Run(ctx, waiting); r.Status != "queued" || !r.AwaitingApproval {
+		t.Fatal("a run waiting for approval was polled", r.Status, r.AwaitingApproval)
+	}
+	// The approval's webhook moves it on, and the poll follows it again.
+	if err = webhook(s, "approved", "acme/agent", auditRun(807, "in_progress", "")); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := s.Run(ctx, waiting); r.Status != "running" || r.AwaitingApproval {
+		t.Fatal("approval did not move the run on", r.Status, r.AwaitingApproval)
+	}
+	if err = s.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := s.Run(ctx, waiting); r.Status != "completed" {
+		t.Fatal("the poll did not follow the approved run", r.Status)
 	}
 }
 

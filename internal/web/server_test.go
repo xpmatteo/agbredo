@@ -181,6 +181,22 @@ func TestRunPageOfARunWithoutTelemetry(t *testing.T) {
 	}
 }
 
+// A run waiting for a maintainer's approval is labelled, and is not counted as active.
+func TestRunWaitingForApproval(t *testing.T) {
+	s := &testService{run: core.Run{ID: "run-1", Status: "queued", AwaitingApproval: true}}
+	body := serve(s, testAuth{"admin", true}, http.MethodGet, "/", nil).Body.String()
+	if !strings.Contains(body, "<span>Active runs</span><strong>0</strong>") || !strings.Contains(body, "Waiting for approval") {
+		t.Fatal(body)
+	}
+	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(); !strings.Contains(body, "Waiting for approval on GitHub") {
+		t.Fatal(body)
+	}
+	s.run.AwaitingApproval = false
+	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/", nil).Body.String(); !strings.Contains(body, "<span>Active runs</span><strong>1</strong>") || strings.Contains(body, "Waiting for approval") {
+		t.Fatal(body)
+	}
+}
+
 func TestDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
 	s := &testService{deployment: core.Deployment{ID: "agent-1", Enabled: true}, run: core.Run{ID: "run-1", Status: "running"}}
 	w := serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil)
