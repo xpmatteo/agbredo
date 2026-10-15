@@ -23,11 +23,15 @@
     {
       "text": "Review fixes in commit b4895af: skipped/neutral -\u003e completed; action_required -\u003e stays queued, no completion time (approval moves it on); PipelineVersions groups by ref without refs/tags/ or refs/heads/ (SHA still in key), stored refs unchanged; pull_request runs record no pipeline from referenced_workflows; runRef no longer falls back to HeadBranch; docs: status mapping, Trust replay with new delivery ID, Limits on deployment copy at first webhook, stale installation and action_required polling; Pipeline type comment and glossary. New tests: TestDatabaseWebhookStatusFromConclusions, TestPipelineVersionsGroupsShortAndFullRefs, pull_request pipeline nil, run page head branch not as ref. make test passes.",
       "timestamp": "2026-10-15T10:47:21Z"
+    },
+    {
+      "text": "Second review fixes in commit c9961f4: action_required runs get Run.AwaitingApproval (JSON awaiting_approval, omitempty), recomputed on every webhook/poll state (queued \u0026\u0026 action_required). Reconcile skips them (document-\u003e\u003e'awaiting_approval' IS DISTINCT FROM 'true'); approval webhook clears it and polling resumes. Chose a run field over an events-table subquery so the poll and the dashboard share one rule; dashboard leaves them out of Active and labels them 'Waiting for approval'. Fork guard: no pipeline for any event starting with pull_request except pull_request_target. Tests: approval run not polled then followed after approval; pull_request_review/_comment no pipeline, pull_request_target keeps it; web label and Active count. Docs updated. make test passes.",
+      "timestamp": "2026-10-15T10:50:58Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Record every run of a live deployment from workflow_run webhooks, with or without telemetry",
   "type": "task",
-  "updated_at": "2026-10-15T10:47:21Z"
+  "updated_at": "2026-10-15T10:50:58Z"
 }
