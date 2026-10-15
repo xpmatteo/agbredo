@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-15T08:58:42Z",
+  "description": "Part of the webhook audit trail epic; read the epic first. Deferred: do after the PR ticket, when Matt asks.\n\n## Goal\n\nRecord the rest of the useful webhook facts in Postgres. The raw deliveries are already archived from the first ticket.\n\n1. Trust gate changes: `installation` (created, deleted, suspend, unsuspend, new_permissions_accepted) and `installation_repositories` (added, removed). Every GitHub App receives these without subscribing. They are fleet-level, not per run: a small append-only table (who: sender.login, when, action, installation id, repositories added/removed) and a dashboard page. The installation is Agbredo's only trust gate (docs/10-design.md, Trust), so changes to it belong in the audit trail.\n2. Questions filed by agents in bw: pushes by a bot to the `beadwork` branch (`push` event, needs Contents: read). To link them to a run, bw's commit message must carry the run ID; bw controls those messages, so first find out whether bw can add a trailer (or the pipeline can amend), and talk with Matt.\n3. Changes to a deployment's caller workflow file (`push` touching .github/workflows/\u003cfile\u003e) and tag moves in the central pipelines repo (needs the App installed there). Ask Matt whether wanted.\n\n## Open questions for Matt\n\nWhich of the three, and in what order.",
+  "id": "ag-o6z.5",
+  "labels": [],
+  "parent": "ag-o6z",
+  "priority": 3,
+  "status": "open",
+  "title": "Record installation changes, beadwork pushes and workflow edits from webhooks",
+  "type": "task",
+  "updated_at": "2026-10-15T08:58:42Z"
+}
