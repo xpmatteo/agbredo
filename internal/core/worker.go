@@ -70,7 +70,7 @@ func applyWorkflowRun(ctx context.Context, tx pgx.Tx, r Run, gh WorkflowRun) err
 	if r.GitHubStartedAt.IsZero() {
 		r.GitHubStartedAt = gh.StartedAt
 	}
-	if r.GitHubCompletedAt.IsZero() && gh.Status == "completed" {
+	if r.GitHubCompletedAt.IsZero() && finished(gh) {
 		r.GitHubCompletedAt = gh.UpdatedAt
 	}
 	_, err := insertEvent(ctx, tx, Event{ID: fmt.Sprintf("system:github:%d:%d:%s:%s", gh.ID, gh.Attempt, gh.Status, gh.Conclusion), RunID: r.ID, CorrelationID: r.CorrelationID, DeploymentID: r.Deployment.ID, DeploymentRevision: r.Deployment.Revision, Timestamp: now(), Type: "github.workflow_run", Status: r.Status, Message: "GitHub workflow " + gh.Status + " " + gh.Conclusion})
@@ -212,10 +212,18 @@ func (s *Service) webhook(ctx context.Context, d Delivery, gh WorkflowRun) (bool
 // newRunFromWebhook is a run first seen in a workflow_run webhook, before any
 // of its jobs asked for a telemetry token. It has no ref, which only the OIDC
 // identity gives; the first token request adds it (see lockRun).
+//
+// A pull_request run runs the workflow file of the pull request, which the
+// author of a fork controls, so its referenced workflows say nothing
+// reliable: it records no pipeline. The OIDC path refuses pull_request runs
+// for the same reason.
 func newRunFromWebhook(a Deployment, gh WorkflowRun) Run {
 	id := attemptRunID(a.ID, gh.ID, gh.Attempt)
 	r := Run{ID: id, CorrelationID: id, Deployment: a, GitHubRunID: gh.ID, RunAttempt: gh.Attempt, Status: "queued", ThresholdMicros: a.ThresholdMicros,
-		TriggerEvent: gh.Event, Actor: gh.Actor, TriggeringActor: gh.TriggeringActor, Pipeline: PipelineOfRun(gh), CreatedAt: now(), UpdatedAt: now()}
+		TriggerEvent: gh.Event, Actor: gh.Actor, TriggeringActor: gh.TriggeringActor, CreatedAt: now(), UpdatedAt: now()}
+	if gh.Event != "pull_request" {
+		r.Pipeline = PipelineOfRun(gh)
+	}
 	r.GitHubURL = fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", a.Owner, a.Repository, gh.ID)
 	if strings.HasPrefix(gh.URL, "https://github.com/") {
 		r.GitHubURL = gh.URL

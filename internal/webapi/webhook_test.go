@@ -163,7 +163,7 @@ func TestDatabaseWebhookDeliveriesAreArchivedAndIndexed(t *testing.T) {
 		t.Fatalf("runs: %+v %v", fleet.Runs, err)
 	}
 	for _, r := range fleet.Runs {
-		want := map[int64]string{777: "completed", 778: "failed"}[r.GitHubRunID]
+		want := map[int64]string{777: "completed", 778: "completed"}[r.GitHubRunID] // skipped is not a failure
 		if r.Status != want || r.HeadBranch != "main" {
 			t.Fatalf("run %d: status %s, head branch %q", r.GitHubRunID, r.Status, r.HeadBranch)
 		}

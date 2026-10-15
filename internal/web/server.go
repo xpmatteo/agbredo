@@ -298,15 +298,14 @@ func measured(n *int64) string {
 func runTokens(r core.Run, kind string) string { return usageTokens(r.ClaudeUsage, kind) }
 
 // runRef is the git ref the run ran from, from its OIDC identity. A run that
-// asked for no telemetry token has none; it shows GitHub's head branch (a
-// branch or tag name) instead. Runs created before the ref was recorded on the
+// asked for no telemetry token has none. GitHub's head branch is not a ref
+// (for a tag push it is the tag name), so it is not shown here; the run page
+// shows it in its own row. Runs created before the ref was recorded on the
 // run fall back to the ref of their deployment copy.
 func runRef(r core.Run) string {
 	switch {
 	case r.Ref != "":
 		return r.Ref
-	case r.HeadBranch != "":
-		return r.HeadBranch
 	case r.Deployment.Ref != "":
 		return r.Deployment.Ref
 	default:

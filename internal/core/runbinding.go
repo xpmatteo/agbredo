@@ -135,21 +135,31 @@ func addMeasured(total **int64, n *int64) {
 }
 
 // statusFromGitHub is the run's next status. A run that waits to start stays
-// queued; one that has started does not go back to queued.
+// queued; one that has started does not go back to queued. A run that waits
+// for a maintainer to approve it (action_required, e.g. a pull request from a
+// fork) is not finished: it stays queued, so that an approval can move it on.
+// A skipped or neutral run is completed, not failed.
 func statusFromGitHub(current string, gh WorkflowRun) string {
-	switch gh.Status {
-	case "completed":
-	case "requested", "queued", "pending", "waiting":
-		return Transition(current, "queued")
+	if !finished(gh) {
+		switch gh.Status {
+		case "completed", "action_required", "requested", "queued", "pending", "waiting":
+			return Transition(current, "queued")
+		default:
+			return Transition(current, "running")
+		}
+	}
+	switch gh.Conclusion {
+	case "success", "skipped", "neutral":
+		return Transition(current, "completed")
+	case "cancelled":
+		return Transition(current, "cancelled")
 	default:
-		return Transition(current, "running")
+		return Transition(current, "failed")
 	}
-	next := "failed"
-	if gh.Conclusion == "success" {
-		next = "completed"
-	}
-	if gh.Conclusion == "cancelled" {
-		next = "cancelled"
-	}
-	return Transition(current, next)
+}
+
+// finished says whether GitHub has finished the run attempt. A completed run
+// that waits for approval (conclusion action_required) has not.
+func finished(gh WorkflowRun) bool {
+	return gh.Status == "completed" && gh.Conclusion != "action_required"
 }

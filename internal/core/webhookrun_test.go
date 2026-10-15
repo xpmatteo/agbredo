@@ -88,14 +88,48 @@ func TestDatabaseWebhookRecordsARunWithoutTelemetry(t *testing.T) {
 	if n := eventCount(t, s, id); n != 3 {
 		t.Fatalf("%d events", n)
 	}
-	// Runs triggered by pull requests are recorded too; they still get no token.
-	pr := auditRun(778, "completed", "skipped")
+	// Runs triggered by pull requests are recorded too; they still get no
+	// token. Their pipeline is not recorded: a fork's author controls the
+	// workflow file of a pull_request run.
+	pr := auditRun(778, "completed", "success")
 	pr.Event = "pull_request"
 	if err = webhook(s, "pr", "acme/agent", pr); err != nil {
 		t.Fatal(err)
 	}
-	if r, _ = s.Run(ctx, attemptRunID(a.ID, 778, 1)); r.TriggerEvent != "pull_request" || r.Status != "failed" {
-		t.Fatal(r.TriggerEvent, r.Status)
+	if r, _ = s.Run(ctx, attemptRunID(a.ID, 778, 1)); r.TriggerEvent != "pull_request" || r.Status != "completed" || r.Pipeline != nil {
+		t.Fatal(r.TriggerEvent, r.Status, r.Pipeline)
+	}
+}
+
+// GitHub's conclusions: skipped and neutral runs are completed, not failed. A
+// run that waits for a maintainer's approval (action_required) is not
+// finished: it stays queued, and the approval moves it on.
+func TestDatabaseWebhookStatusFromConclusions(t *testing.T) {
+	s, _ := testService(t)
+	ctx := context.Background()
+	a, err := s.SaveDeployment(ctx, validDeployment())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n, c := range []struct{ conclusion, want string }{
+		{"success", "completed"}, {"skipped", "completed"}, {"neutral", "completed"}, {"cancelled", "cancelled"},
+		{"failure", "failed"}, {"timed_out", "failed"}, {"startup_failure", "failed"}, {"action_required", "queued"},
+	} {
+		id := int64(800 + n)
+		if err = webhook(s, c.conclusion, "acme/agent", auditRun(id, "completed", c.conclusion)); err != nil {
+			t.Fatal(err)
+		}
+		r, _ := s.Run(ctx, attemptRunID(a.ID, id, 1))
+		if r.Status != c.want || r.GitHubCompletedAt.IsZero() != (c.want == "queued") {
+			t.Fatalf("%s: status %s, completed at %v", c.conclusion, r.Status, r.GitHubCompletedAt)
+		}
+	}
+	approved := auditRun(807, "in_progress", "")
+	if err = webhook(s, "approved", "acme/agent", approved); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := s.Run(ctx, attemptRunID(a.ID, 807, 1)); r.Status != "running" {
+		t.Fatal("approval did not move the run on", r.Status)
 	}
 }
 

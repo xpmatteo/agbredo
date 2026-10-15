@@ -79,6 +79,23 @@ func TestPipelineDisplay(t *testing.T) {
 	}
 }
 
+// A ref from OIDC and the same ref as the caller workflow wrote it, at the
+// same commit, are one version. Another commit is another version. The
+// stored refs stay as GitHub gave them.
+func TestPipelineVersionsGroupsShortAndFullRefs(t *testing.T) {
+	full := &Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "refs/tags/v1", SHA: pipelineSHA}
+	short := &Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "v1", SHA: pipelineSHA}
+	branch := &Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "refs/heads/v1", SHA: pipelineSHA}
+	moved := &Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "v1", SHA: "1123456789abcdef0123456789abcdef01234567"}
+	uses := PipelineVersions([]Run{{ID: "d", Pipeline: short}, {ID: "c", Pipeline: full}, {ID: "b", Pipeline: branch}, {ID: "a", Pipeline: moved}})
+	if len(uses) != 2 || uses[0].Runs != 3 || uses[0].Pipeline != short || uses[1].Pipeline != moved {
+		t.Fatalf("%#v", uses)
+	}
+	if full.Ref != "refs/tags/v1" || branch.Ref != "refs/heads/v1" {
+		t.Fatal("stored refs changed")
+	}
+}
+
 func TestPipelineVersionsGroupsRunsNewestFirst(t *testing.T) {
 	v2 := &Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "refs/tags/v2", SHA: pipelineSHA}
 	v1 := &Pipeline{Path: "org/agents/.github/workflows/triage.yml", Ref: "refs/tags/v1"}

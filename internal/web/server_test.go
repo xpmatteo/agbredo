@@ -148,7 +148,7 @@ func TestRunPageShowsRunRef(t *testing.T) {
 	}{
 		{"own ref", core.Run{ID: "run-1", Ref: "refs/heads/feature", Deployment: core.Deployment{Ref: "main"}}, `<dt>Ref</dt><dd class="mono">refs/heads/feature</dd>`},
 		{"legacy copy", core.Run{ID: "run-1", Deployment: core.Deployment{Ref: "main"}}, `<dt>Ref</dt><dd class="mono">main</dd>`},
-		{"head branch", core.Run{ID: "run-1", HeadBranch: "v1.2", Deployment: core.Deployment{Ref: "main"}}, `<dt>Ref</dt><dd class="mono">v1.2</dd>`},
+		{"head branch is not a ref", core.Run{ID: "run-1", HeadBranch: "v1.2"}, `<dt>Ref</dt><dd class="mono">Unavailable</dd><dt>Head branch</dt><dd class="mono">v1.2</dd>`},
 		{"none", core.Run{ID: "run-1"}, `<dt>Ref</dt><dd class="mono">Unavailable</dd>`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

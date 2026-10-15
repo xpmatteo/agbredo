@@ -7,13 +7,18 @@ import (
 )
 
 // Pipeline is the pipeline a run used and its version (see
-// docs/00-glossary.md). GitHub supplies both in the job's OIDC token, so the
-// pipeline cannot fake them. They are only recorded and shown: the identity
-// of a run is always its caller workflow.
+// docs/00-glossary.md). GitHub supplies both: in the job's OIDC token
+// (job_workflow_ref, job_workflow_sha) at the run's first telemetry token, or,
+// for a run that asked for no token, in the referenced_workflows of its
+// workflow_run webhook. Either way the pipeline cannot fake them. A
+// pull_request run has none: it runs the pull request's workflow file, which
+// a fork's author controls. They are only recorded and shown: the identity of
+// a run is always its caller workflow.
 type Pipeline struct {
 	// Path of the reusable workflow, e.g. org/agents/.github/workflows/triage.yml.
 	Path string `json:"path"`
-	// Ref of the central repository it ran from, e.g. refs/tags/v1.
+	// Ref of the central repository it ran from: refs/tags/v1 from OIDC, or v1
+	// as the caller workflow wrote it, from referenced_workflows.
 	Ref string `json:"ref"`
 	// SHA is the commit it ran from. Empty if GitHub did not give one.
 	SHA string `json:"sha,omitempty"`
@@ -101,7 +106,9 @@ type PipelineUse struct {
 }
 
 // PipelineVersions groups runs, newest first, by the pipeline version they
-// used. The group of the newest run comes first.
+// used. The group of the newest run comes first. A ref from OIDC
+// (refs/tags/v1) and the same ref as a caller workflow wrote it (v1) are one
+// version, if the commit is the same too. The stored refs are not changed.
 func PipelineVersions(runs []Run) []PipelineUse {
 	var uses []PipelineUse
 	index := map[Pipeline]int{}
@@ -109,6 +116,7 @@ func PipelineVersions(runs []Run) []PipelineUse {
 		var key Pipeline // the zero key groups the runs without a pipeline
 		if r.Pipeline != nil {
 			key = *r.Pipeline
+			key.Ref = shortRef(key.Ref)
 		}
 		i, ok := index[key]
 		if !ok {
@@ -119,6 +127,16 @@ func PipelineVersions(runs []Run) []PipelineUse {
 		uses[i].Runs++
 	}
 	return uses
+}
+
+// shortRef is a ref without its refs/tags/ or refs/heads/ prefix.
+func shortRef(ref string) string {
+	for _, prefix := range []string{"refs/tags/", "refs/heads/"} {
+		if rest, ok := strings.CutPrefix(ref, prefix); ok {
+			return rest
+		}
+	}
+	return ref
 }
 
 // RecentRuns is the newest runs of a deployment, at most limit of them.
