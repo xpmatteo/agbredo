@@ -19,11 +19,15 @@
     {
       "text": "Review triage 2026-10-15. Fix now: drop wake channel (Reconcile every 30 s is enough; also lowers stale-snapshot risk), don't save while any job is not completed, no backoff on ctx errors, test updated_at fallback, nil job guard, Trust sentence on untrusted job/step names, clock comment. No action: truncation flag (keep the 'may list more' guess; a stored bool jobs_truncated would be the way if Matt wants exact), Step.Number 0, page loop. Note: two instances during a deploy may make one extra GitHub call; saveJobs stores once.",
       "timestamp": "2026-10-15T11:06:20Z"
+    },
+    {
+      "text": "Review fixes in commit ae6147c: wake channel dropped, Work runs FetchJobs after Reconcile every 30 s with its own 2 min timeout (Reconcile no longer calls it); a list with any job Status != completed is not saved and the run goes on backoff (steps not checked); a ListJobs error with ctx.Err() != nil returns ctx.Err() without backoff; github ListJobs skips nil jobs; comment on the two clocks in the 24 h query; Trust line on job/step/runner names in docs/10-design.md, Jobs and steps section renumbered (worker every 30 s; snapshot rule; context cut short does not count). New tests: snapshot then final with pending step, context cut short not on hold, updated_at fallback (25 h not asked, 1 h asked), two Service values keep one list. make test passes.",
+      "timestamp": "2026-10-15T11:08:17Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Record the jobs and steps of each run when it completes",
   "type": "task",
-  "updated_at": "2026-10-15T11:06:20Z"
+  "updated_at": "2026-10-15T11:08:17Z"
 }
