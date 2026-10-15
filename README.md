@@ -119,4 +119,3 @@ AGBREDO_TEST_DATABASE_URL='postgres://agbredo:agbredo-local@localhost:5432/agbre
 
 Automated tests use external GitHub test doubles. Live GitHub Actions, App OAuth and Railway deployment require your credentials and repository configuration. To check a deployment, run the example workflow with each scenario and confirm the run page shows the expected status, agent run, estimates and events.
 
-The primary routes are `/`, `/agents`, `/agents/{id}`, `/runs` and `/runs/{id}`. Machine endpoints are `/api/otlp-token` and, for older workflows, `/api/agents/{id}/otlp-token` (telemetry tokens for runners), `/v1/metrics`, `/v1/logs` and `/v1/traces` (telemetry from Claude Code) and `/api/github/webhook`.
