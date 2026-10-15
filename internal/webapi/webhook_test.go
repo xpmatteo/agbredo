@@ -196,9 +196,20 @@ func TestDatabaseWebhookDeliveriesAreArchivedAndIndexed(t *testing.T) {
 		}
 	}
 	expectOutcome("pr-bad", core.DeliveryFailed, "invalid pull_request payload")
+	// Only the opening counts: an edit that adds a trailer is ignored, before its shape is checked.
+	for _, body := range []string{pullRequestBody("edited", "acme/agent", 15, "Agbredo-Run: 778/1"), `{"action":"edited"}`} {
+		if code := deliver("pull_request", "pr-edited", body); code != http.StatusNoContent {
+			t.Fatalf("edited pull request: status %d", code)
+		}
+	}
+	expectOutcome("pr-edited", core.DeliveryIgnored, "")
+	var edited int
+	if err := service.DB.QueryRow(ctx, "SELECT count(*) FROM pull_requests WHERE id='7:15'").Scan(&edited); err != nil || edited != 0 {
+		t.Fatalf("edited pull request recorded: %d %v", edited, err)
+	}
 
 	// Every verified delivery reached the store, in its own stream, unchanged.
-	want := []string{"ping-1", "pr-1", "wr-unknown", "wr-bad", "wr-bad", "wr-bad", "wr-bad", "wr-1", "wr-1", "wr-2", "pr-2", "pr-bad", "pr-bad", "pr-bad"}
+	want := []string{"ping-1", "pr-1", "wr-unknown", "wr-bad", "wr-bad", "wr-bad", "wr-bad", "wr-1", "wr-1", "wr-2", "pr-2", "pr-bad", "pr-bad", "pr-bad", "pr-edited", "pr-edited"}
 	for n, delivery := range want {
 		select {
 		case got := <-received:

@@ -452,7 +452,7 @@ func openedPR(link string) core.PullRequest {
 	return p
 }
 
-// The runs table says whether each run opened a pull request. "No PR" only
+// The runs table says whether each run opened a pull request. "No PR linked" only
 // when the run has finished and Agbredo recorded pull requests for the whole
 // of it; otherwise the outcome is unavailable.
 func TestRunsTableShowsTheOutcome(t *testing.T) {
@@ -468,8 +468,8 @@ func TestRunsTableShowsTheOutcome(t *testing.T) {
 	}{
 		{"declared", "completed", before, []core.PullRequest{openedPR(core.LinkDeclared)}, `<a href="https://github.com/acme/agent/pull/13" target="_blank" rel="noopener noreferrer">Opened PR #13</a></div>`, "inferred"},
 		{"inferred", "running", before, []core.PullRequest{openedPR(core.LinkInferred)}, `Opened PR #13</a><small>inferred</small>`, "No PR"},
-		{"finished, no PR", "completed", before, nil, "<td>No PR</td>", "Opened PR"},
-		{"failed, no PR", "failed", started, nil, "<td>No PR</td>", "Opened PR"},
+		{"finished, no PR", "completed", before, nil, "<td>No PR linked</td>", "Opened PR"},
+		{"failed, no PR", "failed", started, nil, "<td>No PR linked</td>", "Opened PR"},
 		{"running", "running", before, nil, "<td>Unavailable</td>", "No PR"},
 		{"started before Agbredo recorded pull requests", "completed", after, nil, "<td>Unavailable</td>", "No PR"},
 		{"recording time unknown", "completed", time.Time{}, nil, "<td>Unavailable</td>", "No PR"},
@@ -486,7 +486,7 @@ func TestRunsTableShowsTheOutcome(t *testing.T) {
 	}
 	// A run without GitHub's start time counts from when Agbredo recorded it.
 	s := &testService{run: core.Run{ID: "run-1", Status: "completed", CreatedAt: started}, since: before}
-	if body := serve(s, testAuth{"admin", true}, http.MethodGet, "/runs", nil).Body.String(); !strings.Contains(body, "<td>No PR</td>") {
+	if body := serve(s, testAuth{"admin", true}, http.MethodGet, "/runs", nil).Body.String(); !strings.Contains(body, "<td>No PR linked</td>") {
 		t.Fatal(body)
 	}
 }
@@ -539,7 +539,7 @@ func TestDeploymentPageShowsUnlinkedPullRequests(t *testing.T) {
 		}
 	}
 	s.prs = nil
-	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil).Body.String(); !strings.Contains(body, `<td colspan="6">None recorded.</td>`) {
+	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil).Body.String(); !strings.Contains(body, `<td colspan="6">None recorded.</td>`) || !strings.Contains(body, "Newest first, up to 20.</p>") {
 		t.Fatal(body)
 	}
 }

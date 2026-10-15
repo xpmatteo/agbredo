@@ -157,6 +157,7 @@ func TestDatabasePullRequestsThatAreRecorded(t *testing.T) {
 	}
 	opened := time.Date(2026, 10, 15, 7, 8, 10, 0, time.UTC)
 	byPerson := func(f PullRequestFacts) PullRequestFacts { f.Author, f.AuthorType = "matt", "User"; return f }
+	fromFork := func(f PullRequestFacts) PullRequestFacts { f.HeadRepo = "someone/agent"; return f }
 	inRepo := func(f PullRequestFacts, repository string) PullRequestFacts { f.Repository = repository; return f }
 	for _, c := range []struct {
 		name   string
@@ -173,6 +174,7 @@ func TestDatabasePullRequestsThatAreRecorded(t *testing.T) {
 		{"repository of a deleted deployment", "opened", inRepo(auditPR(6, opened, ""), "acme/gone"), false, ""},
 		{"closed before Agbredo saw it open", "closed", auditPR(7, opened, ""), false, ""},
 		{"edit of a pull request Agbredo did not record", "edited", auditPR(8, opened, ""), false, ""},
+		{"bot from a fork, without a trailer", "opened", fromFork(auditPR(9, opened, "")), true, ReasonPRFromFork},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			delivery := "pr-" + c.name
@@ -193,7 +195,7 @@ func TestDatabasePullRequestsThatAreRecorded(t *testing.T) {
 		})
 	}
 	unlinked, err := s.UnlinkedPullRequests(ctx, "Acme", "AGENT", 20)
-	if err != nil || len(unlinked) != 3 {
+	if err != nil || len(unlinked) != 4 {
 		t.Fatal(len(unlinked), err)
 	}
 	// The person's pull request has no finding of an unlinked bot pull request.
@@ -228,7 +230,7 @@ func TestDatabasePullRequestBeforeItsRunIsLinkedByReconcile(t *testing.T) {
 		!reflect.DeepEqual(p.Findings, []string{FindingTrailerMismatch, FindingUnlinkedBotPR}) {
 		t.Fatalf("%s %#v", link, p)
 	}
-	// Another run, recorded later, opened a pull request without a trailer.
+	// Another pull request, without a trailer: no run in its window yet.
 	if err = prWebhook(s, "pr-inferred", "opened", auditPR(14, opened, "")); err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +250,8 @@ func TestDatabasePullRequestBeforeItsRunIsLinkedByReconcile(t *testing.T) {
 	if err = webhook(s, "wr-777", "acme/agent", recentRun(777, true)); err != nil {
 		t.Fatal(err)
 	}
-	// Reconcile links the declared one only: two runs in the window now.
+	// Run 777 is recorded now. Reconcile links 13 by its trailer (declared)
+	// and 14 by time (inferred): 777 is the only run in its window.
 	if err = s.Reconcile(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -276,9 +279,10 @@ func TestDatabasePullRequestBeforeItsRunIsLinkedByReconcile(t *testing.T) {
 	}
 }
 
-// Without a trailer and with two runs in the window, a pull request is
-// unlinked, with both runs as candidates. An edit that adds the trailer links it.
-func TestDatabaseEditedRefreshesAnUnlinkedPullRequest(t *testing.T) {
+// Link and findings are decided at the opening. Without a trailer and with
+// two runs in the window, a pull request is unlinked, with both runs as
+// candidates. An edit that adds the trailer is ignored and changes nothing.
+func TestDatabaseEditedIsIgnored(t *testing.T) {
 	s, _ := testService(t)
 	ctx := context.Background()
 	a, err := s.SaveDeployment(ctx, validDeployment())
@@ -300,35 +304,27 @@ func TestDatabaseEditedRefreshesAnUnlinkedPullRequest(t *testing.T) {
 	if want[0] > want[1] {
 		want[0], want[1] = want[1], want[0]
 	}
-	if p, link, _, _ := storedPR(t, s, "42:13"); link != LinkUnlinked || p.Reason != ReasonSeveralRunsInWindow || !reflect.DeepEqual(p.CandidateRuns, want) {
-		t.Fatalf("%s %#v", link, p)
+	before, link, _, _ := storedPR(t, s, "42:13")
+	if link != LinkUnlinked || before.Reason != ReasonSeveralRunsInWindow || !reflect.DeepEqual(before.CandidateRuns, want) {
+		t.Fatalf("%s %#v", link, before)
 	}
 	pr.Title, pr.Body = "Audit fixes, with the trailer", "Fixes.\n\nAgbredo-Run: 778/1"
 	if err = prWebhook(s, "pr-edited", "edited", pr); err != nil {
 		t.Fatal(err)
 	}
-	if outcome, _ := deliveryOutcome(t, s, "pr-edited"); outcome != DeliveryHandled {
+	if outcome, _ := deliveryOutcome(t, s, "pr-edited"); outcome != DeliveryIgnored {
 		t.Fatal(outcome)
 	}
-	p, link, _, _ := storedPR(t, s, "42:13")
-	if link != LinkDeclared || p.RunID != run778 || p.Title != "Audit fixes, with the trailer" || p.CandidateRuns != nil || p.Delivery != "pr-opened" {
-		t.Fatalf("%s %#v", link, p)
+	if after, link, _, _ := storedPR(t, s, "42:13"); link != LinkUnlinked || !reflect.DeepEqual(after, before) {
+		t.Fatalf("changed: %s %#v", link, after)
 	}
-	// The event takes its ID from the delivery that recorded the pull request.
-	if events := prEvents(t, s, run778); len(events) != 1 || events[0].ID != "github:pull_request:opened:pr-opened" {
-		t.Fatalf("%+v", events)
-	}
-	// A link never changes: an edit that removes the trailer is ignored.
-	pr.Body = ""
-	if err = prWebhook(s, "pr-edited-2", "edited", pr); err != nil {
-		t.Fatal(err)
-	}
-	if _, link, _, _ = storedPR(t, s, "42:13"); link != LinkDeclared {
-		t.Fatal(link)
+	if n := len(prEvents(t, s, run777)) + len(prEvents(t, s, run778)); n != 0 {
+		t.Fatalf("%d pull request events", n)
 	}
 }
 
-// Deliveries and Reconcile at the same time link a pull request once, with one event.
+// Deliveries of the same opening and the worker at the same time link a
+// pull request once, with one event.
 func TestDatabasePullRequestLinkRace(t *testing.T) {
 	s, _ := testService(t)
 	ctx := context.Background()
@@ -349,7 +345,7 @@ func TestDatabasePullRequestLinkRace(t *testing.T) {
 	for n := range 4 {
 		wg.Add(3)
 		go func() { defer wg.Done(); errs <- s.Reconcile(ctx) }()
-		go func() { defer wg.Done(); errs <- prWebhook(s, "pr-edited-"+itoa(int64(n)), "edited", pr) }()
+		go func() { defer wg.Done(); errs <- s.LinkPullRequests(ctx) }()
 		go func() { defer wg.Done(); errs <- prWebhook(s, "pr-again-"+itoa(int64(n)), "opened", pr) }()
 	}
 	wg.Wait()

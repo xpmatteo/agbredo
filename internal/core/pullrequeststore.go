@@ -17,9 +17,10 @@ import (
 //   - opened: a pull request of a repository with a live deployment (any
 //     workflow, disabled or not) is recorded if its author is a bot or its
 //     body has a trailer, and linked to a run if it can be (LinkPullRequest).
-//   - edited: refreshes the title and trailer of a recorded pull request
-//     that is still unlinked, and tries to link it again.
-//   - Other actions, and pull requests Agbredo does not record: ignored.
+//     Its facts, trailer and findings are those of the opening.
+//   - Other actions (edited, closed, reopened, ...), and pull requests
+//     Agbredo does not record: ignored. An edit never changes what was
+//     recorded: a trailer added later does not count.
 //
 // The delivery is indexed as handled, ignored or failed. A handled delivery
 // is not applied again.
@@ -32,7 +33,7 @@ func (s *Service) pullRequestWebhook(ctx context.Context, d Delivery, f PullRequ
 	if !ok || owner == "" || repository == "" || f.RepositoryID <= 0 || f.Number <= 0 || f.CreatedAt.IsZero() {
 		return false, invalid("invalid pull_request payload")
 	}
-	if d.Action != "opened" && d.Action != "edited" {
+	if d.Action != "opened" {
 		return false, nil
 	}
 	p := newPullRequest(f, d.ID)
@@ -59,25 +60,19 @@ func (s *Service) pullRequestWebhook(ctx context.Context, d Delivery, f PullRequ
 	if !watched {
 		return false, nil
 	}
-	if d.Action == "opened" {
-		if _, err = tx.Exec(ctx, `INSERT INTO pull_requests(id, owner, repository, number, link, document) VALUES($1,$2,$3,$4,$5,$6)
-			ON CONFLICT (id) DO NOTHING`, p.ID, p.Owner, p.Repository, p.Number, p.Link, mustJSON(p)); err != nil {
-			return false, err
-		}
+	if _, err = tx.Exec(ctx, `INSERT INTO pull_requests(id, owner, repository, number, link, document) VALUES($1,$2,$3,$4,$5,$6)
+		ON CONFLICT (id) DO NOTHING`, p.ID, p.Owner, p.Repository, p.Number, p.Link, mustJSON(p)); err != nil {
+		return false, err
 	}
-	// Locked, so that two deliveries, or a delivery and Reconcile, link it once.
+	// Locked, so that two deliveries, or a delivery and Reconcile, link it
+	// once. The same opening sent again with another delivery ID finds the
+	// record of the first, and keeps its facts.
 	current, err := readJSON[PullRequest](ctx, tx, "SELECT document FROM pull_requests WHERE id=$1 FOR UPDATE", p.ID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil // an edit of a pull request Agbredo did not record
-	}
 	if err != nil {
 		return false, err
 	}
 	if current.Link != LinkUnlinked {
 		return false, nil // a link never changes
-	}
-	if d.Action == "edited" {
-		current.Title, current.Trailer, current.TrailerRunID, current.TrailerAttempt = p.Title, p.Trailer, p.TrailerRunID, p.TrailerAttempt
 	}
 	if err = linkAndSave(ctx, tx, current, true); err != nil {
 		return false, err
@@ -159,11 +154,12 @@ func linkAndSave(ctx context.Context, tx pgx.Tx, p PullRequest, always bool) err
 		p.LinkedAt = now()
 	}
 	// The WHERE clause keeps a link from ever changing, even if a caller forgot the lock.
-	if _, err = tx.Exec(ctx, "UPDATE pull_requests SET link=$2, run_id=$3, document=$4, updated_at=now() WHERE id=$1 AND link='unlinked'",
-		p.ID, p.Link, run, mustJSON(p)); err != nil {
+	tag, err := tx.Exec(ctx, "UPDATE pull_requests SET link=$2, run_id=$3, document=$4, updated_at=now() WHERE id=$1 AND link='unlinked'",
+		p.ID, p.Link, run, mustJSON(p))
+	if err != nil {
 		return err
 	}
-	if l.RunID == "" {
+	if l.RunID == "" || tag.RowsAffected() != 1 {
 		return nil
 	}
 	for _, r := range runs {
@@ -202,12 +198,17 @@ func (s *Service) LinkPullRequests(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// One pull request that fails does not stop the others.
+	var failed []error
 	for _, id := range ids {
-		if err = s.relink(ctx, id); err != nil {
-			return err
+		if e := s.relink(ctx, id); e != nil {
+			if ctx.Err() != nil {
+				return errors.Join(append(failed, e)...)
+			}
+			failed = append(failed, fmt.Errorf("link pull request %s: %w", id, e))
 		}
 	}
-	return nil
+	return errors.Join(failed...)
 }
 
 func (s *Service) relink(ctx context.Context, id string) error {

@@ -252,7 +252,7 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 		"github.installation_id": installation, "github.sender": payload.Sender.Login})
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
-	if event == "pull_request" && (d.Action == "opened" || d.Action == "edited") {
+	if event == "pull_request" && d.Action == "opened" {
 		a.pullRequest(ctx, w, d, body)
 		return
 	}
@@ -286,9 +286,9 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
-// pullRequest records an opened or edited pull_request delivery. Other
-// actions (closed, reopened, ...) are ignored before this: Agbredo records
-// only the opening of a pull request.
+// pullRequest records an opened pull_request delivery. Other actions
+// (edited, closed, reopened, ...) are ignored before this: Agbredo records
+// only the opening of a pull request, as it was then.
 func (a *API) pullRequest(ctx context.Context, w http.ResponseWriter, d core.Delivery, body []byte) {
 	// The signed payload is trusted, but the event header is not signed: the
 	// payload must have the shape of a pull_request event.

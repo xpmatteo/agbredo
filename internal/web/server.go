@@ -60,9 +60,11 @@ type page struct {
 	PullRequests []core.PullRequest
 	// PullRequestsSince is when Agbredo started recording pull requests; zero if unknown.
 	PullRequestsSince time.Time
-	Active, Failed    int
-	Spending          int64
-	Error             string
+	// UnlinkedLimit is the most unlinked pull requests the deployment page shows.
+	UnlinkedLimit  int
+	Active, Failed int
+	Spending       int64
+	Error          string
 }
 
 func New(service Service, auth Auth) *Server {
@@ -236,7 +238,7 @@ func (s *Server) deployment(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "agent", page{Title: a.Name, Deployment: a, Versions: core.PipelineVersions(runs), RecentRuns: recentRuns, PullRequests: prs})
+	s.render(w, r, "agent", page{Title: a.Name, Deployment: a, Versions: core.PipelineVersions(runs), RecentRuns: recentRuns, PullRequests: prs, UnlinkedLimit: unlinkedPRs})
 }
 
 func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {
@@ -390,9 +392,9 @@ func recordsPRs(r core.Run, since time.Time) bool {
 	return !since.IsZero() && !start.IsZero() && !start.Before(since)
 }
 
-// noPR says whether Agbredo knows that a run with no linked pull request
-// opened none: the run has finished, and Agbredo was recording pull requests
-// for the whole of it. Otherwise the outcome is unknown, not "no PR".
+// noPR says whether a run with no linked pull request can be shown as "No
+// PR linked": the run has finished, and Agbredo was recording pull requests
+// for the whole of it. Otherwise the outcome is unknown.
 func noPR(r core.Run, since time.Time) bool {
 	return core.Terminal(r.Status) && recordsPRs(r, since)
 }

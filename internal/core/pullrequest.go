@@ -30,6 +30,7 @@ const (
 // Reasons a pull request is unlinked.
 const (
 	ReasonNoRunInWindow        = "no_run_in_window"
+	ReasonPRFromFork           = "pr_from_fork"
 	ReasonSeveralRunsInWindow  = "several_runs_in_window"
 	ReasonTrailerRunUnknown    = "trailer_run_unknown"
 	ReasonTrailerOutsideWindow = "trailer_outside_window"
@@ -219,9 +220,9 @@ func inWindow(r Run, t time.Time) bool {
 //     is in the same repository (not a fork), and the run the trailer names
 //     (GitHub run ID and attempt) is in this repository and its window holds
 //     the opening.
-//   - inferred: no trailer, the author is a bot, and exactly one run's window
-//     holds the opening. A run waiting for approval has run nothing, and is
-//     not counted.
+//   - inferred: no trailer, the author is a bot, the head branch is in the
+//     same repository, and exactly one run's window holds the opening. A run
+//     waiting for approval has run nothing, and is not counted.
 //   - unlinked: anything else, with a reason.
 //
 // A trailer that does not give a declared link leaves the pull request
@@ -270,6 +271,10 @@ func LinkPullRequest(p PullRequest, runs []Run) Link {
 	}
 	if !p.Bot() {
 		return Link{Level: LinkUnlinked}
+	}
+	// A run pushes its branch to its own repository, never to a fork.
+	if !sameRepository(p.HeadRepo, repository) {
+		return unlinked(ReasonPRFromFork)
 	}
 	var candidates []string
 	for _, r := range here {

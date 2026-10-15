@@ -263,10 +263,10 @@ func ParseWorkflowRunEvent(body []byte) (core.WorkflowRun, error) {
 // shape of its event.
 var ErrBadPullRequest = errors.New("invalid pull_request payload")
 
-// ParsePullRequestEvent reads a pull_request webhook payload of action opened
-// or edited. Its signature has been checked, so its facts come from GitHub.
+// ParsePullRequestEvent reads a pull_request webhook payload of action
+// opened. Its signature has been checked, so its facts come from GitHub.
 // The X-GitHub-Event header is not signed, though, so the payload must have
-// the shape of a pull_request event: one of those actions, the base
+// the shape of a pull_request event: the action opened, the base
 // repository with its ID and owner/repository, and a pull_request object
 // with its number (the same as the payload's, if it has one), author login
 // and type, head ref, creation time, and a base in the same repository (by
@@ -278,9 +278,7 @@ func ParsePullRequestEvent(body []byte) (core.PullRequestFacts, error) {
 	if err := json.Unmarshal(body, &e); err != nil {
 		return core.PullRequestFacts{}, ErrBadPullRequest
 	}
-	switch e.GetAction() {
-	case "opened", "edited":
-	default:
+	if e.GetAction() != "opened" {
 		return core.PullRequestFacts{}, ErrBadPullRequest
 	}
 	p, repo := e.GetPullRequest(), e.GetRepo()

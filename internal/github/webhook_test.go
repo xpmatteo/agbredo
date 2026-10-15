@@ -119,9 +119,9 @@ func TestParsePullRequestEvent(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got  %#v\nwant %#v", got, want)
 	}
-	// An edit has the same shape. A null body, a deleted fork (no head
-	// repository) and a base without its ID are accepted.
-	edited := strings.NewReplacer(`"action": "opened"`, `"action": "edited"`, `"body": "Fixes.\n\nAgbredo-Run: 1/1\n\nAgbredo-Run: 38696780798/1\n"`, `"body": null`,
+	// A null body, a deleted fork (no head repository) and a base without
+	// its ID are accepted.
+	edited := strings.NewReplacer(`"body": "Fixes.\n\nAgbredo-Run: 1/1\n\nAgbredo-Run: 38696780798/1\n"`, `"body": null`,
 		`"head": {"ref": "agent-audit/38696780798", "repo": {"id": 99, "full_name": "xpmatteo/rpg-interpreter"}}`, `"head": {"ref": "agent-audit/38696780798", "repo": null}`,
 		`"base": {"ref": "main", "repo": {"id": 99, `, `"base": {"ref": "main", "repo": {`).Replace(pullRequestPayload)
 	if got, err = ParsePullRequestEvent([]byte(edited)); err != nil || got.Body != "" || got.HeadRepo != "" || got.Number != 13 {
@@ -137,6 +137,7 @@ func TestParsePullRequestEventChecksTheShape(t *testing.T) {
 		"empty":           `{}`,
 		"workflow_run":    workflowRunPayload,
 		"closed":          strings.Replace(pullRequestPayload, `"action": "opened"`, `"action": "closed"`, 1),
+		"edited":          strings.Replace(pullRequestPayload, `"action": "opened"`, `"action": "edited"`, 1),
 		"no pull_request": `{"action":"opened","number":13,"repository":{"id":99,"full_name":"acme/agent"}}`,
 		"no number":       strings.Replace(pullRequestPayload, `"id": 1, "number": 13,`, `"id": 1,`, 1),
 		"another number": strings.Replace(pullRequestPayload, `"number": 13,

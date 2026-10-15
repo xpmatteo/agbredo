@@ -102,6 +102,10 @@ func TestLinkPullRequest(t *testing.T) {
 	fork.HeadRepo = "someone/agent"
 	deletedFork := botPR(10*time.Second, trailer)
 	deletedFork.HeadRepo = ""
+	noTrailerFork := botPR(10*time.Second, "")
+	noTrailerFork.HeadRepo = "someone/agent"
+	noTrailerDeleted := botPR(10*time.Second, "")
+	noTrailerDeleted.HeadRepo = ""
 	human := botPR(10*time.Second, trailer)
 	human.Author, human.AuthorType = "matt", "User"
 	humanNoTrailer := human
@@ -139,6 +143,9 @@ func TestLinkPullRequest(t *testing.T) {
 		{"no trailer, one run that started by Agbredo's time", botPR(6*time.Second, ""), []Run{before}, Link{Level: LinkInferred, RunID: "run-before", Findings: []string{FindingMissingTrailer}}},
 		{"no trailer, before Agbredo's time", botPR(4*time.Second, ""), []Run{before}, Link{Level: LinkUnlinked, Reason: ReasonNoRunInWindow, Findings: []string{FindingUnlinkedBotPR}}},
 		{"no trailer, two runs", botPR(10*time.Second, ""), []Run{other, audit}, Link{Level: LinkUnlinked, Reason: ReasonSeveralRunsInWindow, Candidates: []string{"run-audit", "run-other"}, Findings: []string{FindingUnlinkedBotPR}}},
+		{"no trailer, from a fork", noTrailerFork, []Run{audit}, Link{Level: LinkUnlinked, Reason: ReasonPRFromFork, Findings: []string{FindingUnlinkedBotPR}}},
+		{"no trailer, from a deleted fork", noTrailerDeleted, []Run{audit}, Link{Level: LinkUnlinked, Reason: ReasonPRFromFork, Findings: []string{FindingUnlinkedBotPR}}},
+		{"no trailer, from a fork, no run", noTrailerFork, nil, Link{Level: LinkUnlinked, Reason: ReasonPRFromFork, Findings: []string{FindingUnlinkedBotPR}}},
 		{"no trailer, no run", botPR(10*time.Second, ""), nil, Link{Level: LinkUnlinked, Reason: ReasonNoRunInWindow, Findings: []string{FindingUnlinkedBotPR}}},
 		{"no trailer, runs outside the window", botPR(78*time.Second, ""), []Run{audit, elsewhere, waiting, old}, Link{Level: LinkUnlinked, Reason: ReasonNoRunInWindow, Findings: []string{FindingUnlinkedBotPR}}},
 		{"no trailer, only a run waiting for approval", botPR(10*time.Second, ""), []Run{waiting}, Link{Level: LinkUnlinked, Reason: ReasonNoRunInWindow, Findings: []string{FindingUnlinkedBotPR}}},
