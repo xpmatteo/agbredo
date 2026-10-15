@@ -8,7 +8,7 @@ Agbredo shows what a fleet of existing GitHub Actions agents did and what they c
 - **Telemetry step** (runs in the agent's workflow, before each Claude Code step). Gets a token from the server with the job's OIDC token, then points Claude Code's own OpenTelemetry export at the server. No wrapper or sidecar. See `integrations/claude-code-otlp/`. It is the only way usage reaches Agbredo.
 - **Server** (Go, one process). Serves the dashboard, takes telemetry and GitHub webhooks, and polls GitHub every 30 seconds for runs that have not finished.
 - **PostgreSQL.** The store for the dashboard. Records are JSON documents in `jsonb` columns.
-- **Telemetry store** (optional, OpenObserve on Railway's private network). Keeps the full telemetry for later analysis. Only Agbredo can reach it. See `internal/forward/`.
+- **Telemetry store** (optional, OpenObserve on Railway's private network). Keeps the full telemetry for later analysis, and the raw payload of every GitHub webhook delivery that passes the signature check. Only Agbredo can reach it. See `internal/forward/`.
 
 ## Flow
 
@@ -19,6 +19,13 @@ Agbredo shows what a fleet of existing GitHub Actions agents did and what they c
 5. The server asks GitHub for that run attempt, using the App installation of the deployment, and requires that it matches. A disabled deployment gets no token for a new run. The deployment, the run and the token are stored together, or not at all.
 6. The first valid request creates the run, and records on it the event that triggered it (the OIDC `event_name` claim), the ref it ran from (the `ref` claim) and, if the caller workflow calls a reusable workflow, the pipeline and its version (the `job_workflow_ref` and `job_workflow_sha` claims). Later requests for the same run attempt find it and change neither.
 7. GitHub `workflow_run` webhooks and the poll set the run's status from GitHub (running, completed, failed, cancelled). Each status change adds one event to the run's history. A finished state is never reopened.
+
+### Webhook flow
+
+1. GitHub posts each webhook of the App to `POST /api/github/webhook`. The server checks its HMAC signature. A delivery with a bad signature, or over 1 MiB, is refused and only logged.
+2. If `OTLP_FORWARD_URL` is set, the server archives the raw payload, whatever the event, as one OTLP log record: `service.name` = `agbredo-github-webhooks`, the body unchanged as the record body, and the attributes `github.delivery`, `github.event`, `github.action`, `github.repository`, `github.installation_id` and `github.sender` when the payload has them. It is posted to `/v1/logs` with the OpenObserve header `stream-name: github_webhooks`, so webhooks get their own stream. Archiving is best effort, like telemetry forwarding: it never fails the webhook.
+3. The server indexes the delivery in `webhook_deliveries`: its event, action, repository and App installation, and its outcome. `handled`: it changed a run. `ignored`: nothing to do, because Agbredo does not act on that event, or does not know the run. `failed`: processing failed, with the error.
+4. A `handled` delivery is not applied again when GitHub sends it again. A `failed` one is processed again, and so is an `ignored` one. Rows from before outcomes were kept have none; they were all handled.
 
 ### Telemetry flow
 
@@ -42,7 +49,7 @@ A run is registered only when a token is requested. Nothing scans GitHub for old
 | `run_tokens` | Hash, run, agent run (column `source`) and expiry of each telemetry token. |
 | `otlp_seen`, `otlp_series` | Hashes of exports already counted, and the last value of each cumulative counter. |
 | `events` | The run's history: one per GitHub status change. The ID is stable, which makes retries safe. Rows of type `claude.execution` come from the former report route; they still load, and are deleted by hand only. |
-| `webhook_deliveries` | Delivery IDs already handled. |
+| `webhook_deliveries` | One row per webhook delivery that passed the signature check, whatever its event: delivery ID, event, action, repository, App installation, outcome (`handled`, `ignored`, `failed`) and the error of a failed one. Rows from before these columns hold only the ID; they were all handled. The raw payload is not kept here. |
 
 Costs are whole microdollars. A missing measurement is stored as missing, not as zero.
 
@@ -52,7 +59,7 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 - **Runners:** only the short-lived OIDC token. No shared secret, and nothing to register.
 - **Which repositories can send telemetry:** any repository where the GitHub App is installed, and nothing else. Installing the App is the only gate. The gate assumes a private App, one that can be installed only on its own account ("Only on this account" in the App settings). A public App could be installed by any GitHub user, who could then create deployments. No person approves a deployment: the first valid run of a workflow in such a repository creates it. The installation ID comes from GitHub, asked by the App itself, never from the runner. To stop a deployment, disable it on the dashboard. To stop a repository, uninstall the App or take the repository out of the installation.
 - **Reusable workflows:** accepted. A caller workflow in the target repository may call a pipeline (a reusable workflow) in any central repository. There is no list of allowed central repositories. Trust rests on GitHub. The OIDC token, signed by GitHub, says which repository and caller workflow ran. The server then checks the run with GitHub through the GitHub App, so only runs in repositories where the App is installed can get a telemetry token. The identity is always the caller workflow, taken from the `workflow_ref` claim. The pipeline's `job_workflow_ref` and `job_workflow_sha` claims are never used to decide who is calling. They are only recorded on the run, to show which pipeline version ran.
-- **Webhooks:** HMAC signature with the App's webhook secret.
+- **Webhooks:** HMAC signature with the App's webhook secret. The headers (`X-GitHub-Delivery`, `X-GitHub-Event`) are not signed. Raw payloads hold emails, commit messages and other content. They go only to the telemetry store, never to PostgreSQL or to the logs. PostgreSQL keeps only the fields of `webhook_deliveries`.
 - **Telemetry tokens:** random, per run attempt and per agent run, 6 hours at most, refused once the run has finished. The agent's own process can read its token. With it, it can only send telemetry for its own run.
 - **Claude credentials:** never seen by the server. Telemetry arrives as raw OTLP over HTTPS. The server keeps only the fields listed above in PostgreSQL, and forwards the rest to the telemetry store if one is set. From traces it reads only the `effort` attribute of `claude_code.llm_request` spans: no prompts, no content, no other attribute. The telemetry step turns off prompt, response and tool logging. It turns on the Claude account fields (`user.account_uuid`, along with `user.email` and `organization.id` which Claude Code always sends), so the store records which Claude account did the work.
 - **Telemetry store:** on the private network only. Agbredo logs in with Basic auth (`OTLP_AUTH_TOKEN`). Runners never get its credentials.
@@ -67,8 +74,8 @@ Costs are whole microdollars. A missing measurement is stored as missing, not as
 - The ref is not checked. A workflow file with the deployment's name runs on any branch or tag, so anyone who can push a branch to the repository can get a telemetry token for that deployment. Pull request events and pull request refs (`refs/pull/...`) are refused.
 - Telemetry is accepted only as OTLP JSON (`OTEL_EXPORTER_OTLP_PROTOCOL=http/json`), not protobuf.
 - Telemetry sent after GitHub marks the run finished is refused. Claude Code sends its last export when it exits, which is before the run finishes. A job that is killed before that loses the last part of its usage.
-- Forwarding is best effort. Telemetry dropped while the store is down is not sent again. A repeated export is forwarded again, though it is counted once in PostgreSQL.
-- Retention in the telemetry store is not decided yet.
+- Forwarding is best effort. Telemetry dropped while the store is down is not sent again. A repeated export is forwarded again, though it is counted once in PostgreSQL. The same holds for webhook deliveries: one dropped is not archived, and a redelivery is archived again.
+- Retention in the telemetry store is not decided yet, for telemetry and for webhook deliveries.
 - Run one server replica.
 - Deleting a deployment only hides it. The next run of its workflow creates a new one. Disable it instead to refuse its tokens.
 - A deployment keeps the App installation it was created with. If the App is uninstalled and installed again, the new installation has another ID, and the deployment's installation must be changed by hand on the dashboard.

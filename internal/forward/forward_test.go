@@ -115,3 +115,87 @@ func TestNilForwarderDropsEverything(t *testing.T) {
 	f.Send("logs", []byte(`{}`), nil)
 	f.Run(context.Background())
 }
+
+// A webhook delivery is one log record: the raw body, unchanged, and what
+// Agbredo read from it as attributes. Empty attributes are left out.
+func TestWebhookRecordShape(t *testing.T) {
+	body := `{"action":"opened","number":9007199254740993,"sender":{"login":"octo"}}`
+	at := time.Unix(1760000000, 5)
+	out, err := WebhookRecord("d-1", "pull_request", at, []byte(body), map[string]string{"github.action": "opened", "github.repository": "o/r", "github.installation_id": "", "github.sender": "octo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resourceAttributes(t, out); len(got) != 1 || got["service.name"] != "agbredo-github-webhooks" {
+		t.Fatalf("resource attributes %v", got)
+	}
+	var doc struct {
+		ResourceLogs []struct {
+			ScopeLogs []struct {
+				LogRecords []struct {
+					TimeUnixNano         string `json:"timeUnixNano"`
+					ObservedTimeUnixNano string `json:"observedTimeUnixNano"`
+					SeverityText         string `json:"severityText"`
+					Body                 struct {
+						StringValue string `json:"stringValue"`
+					} `json:"body"`
+					Attributes []struct {
+						Key   string            `json:"key"`
+						Value map[string]string `json:"value"`
+					} `json:"attributes"`
+				} `json:"logRecords"`
+			} `json:"scopeLogs"`
+		} `json:"resourceLogs"`
+	}
+	if err = json.Unmarshal(out, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.ResourceLogs) != 1 || len(doc.ResourceLogs[0].ScopeLogs) != 1 || len(doc.ResourceLogs[0].ScopeLogs[0].LogRecords) != 1 {
+		t.Fatalf("not one record: %s", out)
+	}
+	r := doc.ResourceLogs[0].ScopeLogs[0].LogRecords[0]
+	if r.TimeUnixNano != "1760000000000000005" || r.ObservedTimeUnixNano != r.TimeUnixNano || r.SeverityText != "INFO" || r.Body.StringValue != body {
+		t.Fatalf("record %+v", r)
+	}
+	got := map[string]string{}
+	for _, a := range r.Attributes {
+		got[a.Key] = a.Value["stringValue"]
+	}
+	want := map[string]string{"github.delivery": "d-1", "github.event": "pull_request", "github.action": "opened", "github.repository": "o/r", "github.sender": "octo"}
+	if len(got) != len(want) {
+		t.Fatalf("attributes %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("%s = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+// Webhooks go to their own OpenObserve stream; telemetry does not name one.
+func TestSendWebhookPostsToTheWebhookStream(t *testing.T) {
+	type request struct{ path, stream, body string }
+	got := make(chan request, 2)
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got <- request{r.URL.Path, r.Header.Get("stream-name"), string(body)}
+	}))
+	defer store.Close()
+	f := New(store.URL+"/api/default", "c2VjcmV0", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go f.Run(ctx)
+	f.SendWebhook("d-1", "ping", []byte(`{"zen":"x"}`), nil)
+	f.Send("logs", []byte(`{"resourceLogs":[]}`), nil)
+	for n, want := range []string{WebhookStream, ""} {
+		select {
+		case r := <-got:
+			if r.path != "/api/default/v1/logs" || r.stream != want {
+				t.Fatalf("request %d: %+v", n, r)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("nothing forwarded")
+		}
+	}
+	var nilForwarder *Forwarder
+	nilForwarder.SendWebhook("d-1", "ping", []byte(`{}`), nil)
+}

@@ -1,6 +1,7 @@
 // Package forward sends Claude Code telemetry on to an OpenTelemetry store
 // such as OpenObserve, after Agbredo has checked its token. Agbredo adds the
 // run and agent it knows from the token; the agent cannot set those itself.
+// It also archives each verified GitHub webhook delivery there, as a log record.
 package forward
 
 import (
@@ -10,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,9 +22,14 @@ var resourceKeys = map[string]string{"metrics": "resourceMetrics", "logs": "reso
 // Attributes with these prefixes are set only by Agbredo. Any sent by the agent are removed.
 var reserved = []string{"agbredo.", "github."}
 
+// WebhookStream is the OpenObserve stream that keeps webhook deliveries,
+// apart from Claude Code's logs. Other stores ignore the header.
+const WebhookStream = "github_webhooks"
+
 type item struct {
 	signal string
 	body   []byte
+	stream string // OpenObserve stream; empty means the store's default
 }
 
 // Forwarder posts telemetry in the background. A nil Forwarder drops everything.
@@ -56,11 +63,67 @@ func (f *Forwarder) Send(signal string, body []byte, labels map[string]string) {
 		f.logger.Warn("telemetry not forwarded: cannot label it", "signal", signal)
 		return
 	}
-	select {
-	case f.queue <- item{signal, labelled}:
-	default:
-		f.logger.Warn("telemetry not forwarded: queue full", "signal", signal)
+	f.enqueue(item{signal: signal, body: labelled})
+}
+
+// SendWebhook archives one verified webhook delivery as one OTLP log record.
+// The body is kept unchanged as the record's body. attrs are added to the
+// record, next to github.delivery and github.event; empty ones are left out.
+func (f *Forwarder) SendWebhook(delivery, event string, body []byte, attrs map[string]string) {
+	if f == nil {
+		return
 	}
+	record, err := WebhookRecord(delivery, event, time.Now(), body, attrs)
+	if err != nil {
+		f.logger.Warn("webhook not archived", "delivery", delivery, "error", err.Error())
+		return
+	}
+	f.enqueue(item{signal: "logs", body: record, stream: WebhookStream})
+}
+
+func (f *Forwarder) enqueue(it item) {
+	select {
+	case f.queue <- it:
+	default:
+		f.logger.Warn("telemetry not forwarded: queue full", "signal", it.signal)
+	}
+}
+
+// WebhookRecord builds the OTLP JSON logs body for one webhook delivery.
+func WebhookRecord(delivery, event string, received time.Time, body []byte, attrs map[string]string) ([]byte, error) {
+	all := map[string]string{"github.delivery": delivery, "github.event": event}
+	for k, v := range attrs {
+		all[k] = v
+	}
+	names := make([]string, 0, len(all))
+	for name, value := range all {
+		if value != "" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	attributes := []any{}
+	for _, name := range names {
+		attributes = append(attributes, attribute(name, all[name]))
+	}
+	at := strconv.FormatInt(received.UnixNano(), 10)
+	doc := map[string]any{"resourceLogs": []any{map[string]any{
+		"resource": map[string]any{"attributes": []any{attribute("service.name", "agbredo-github-webhooks")}},
+		"scopeLogs": []any{map[string]any{
+			"scope": map[string]any{"name": "agbredo"},
+			"logRecords": []any{map[string]any{
+				"timeUnixNano": at, "observedTimeUnixNano": at,
+				"severityNumber": 9, "severityText": "INFO",
+				"body":       map[string]any{"stringValue": string(body)},
+				"attributes": attributes,
+			}},
+		}},
+	}}}
+	return json.Marshal(doc)
+}
+
+func attribute(key, value string) map[string]any {
+	return map[string]any{"key": key, "value": map[string]any{"stringValue": value}}
 }
 
 // Run posts queued telemetry until ctx ends.
@@ -86,6 +149,9 @@ func (f *Forwarder) post(ctx context.Context, it item) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Basic "+f.auth)
+	if it.stream != "" {
+		req.Header.Set("stream-name", it.stream)
+	}
 	resp, err := f.client.Do(req)
 	if err != nil {
 		f.logger.Warn("telemetry not forwarded", "signal", it.signal, "error", err.Error())

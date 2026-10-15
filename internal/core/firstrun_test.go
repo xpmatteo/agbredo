@@ -175,7 +175,7 @@ func TestDatabaseRepositoryNamesIgnoreCase(t *testing.T) {
 		t.Fatal("old route", err)
 	}
 	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "completed", Conclusion: "success"})
-	if err = s.Webhook(ctx, "case", "ACME/AGENT", 777); err != nil {
+	if err = webhook(s, "case", "ACME/AGENT", 777); err != nil {
 		t.Fatal(err)
 	}
 	if r, _ := s.Run(ctx, attemptRunID(a.ID, 777, 1)); r.Status != "completed" {

@@ -125,7 +125,7 @@ func TestIngestCountsEachExportOnceAndPerAgentRun(t *testing.T) {
 		t.Fatal("invalid body not rejected", err)
 	}
 	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: a.Workflow, Ref: "main", Status: "completed", Conclusion: "success"})
-	if err = s.Webhook(ctx, "otlp-done", "acme/agent", 777); err != nil {
+	if err = webhook(s, "otlp-done", "acme/agent", 777); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.IngestMetrics(ctx, review, delta("9", "1")); !errors.Is(err, ErrUnauthorized) {

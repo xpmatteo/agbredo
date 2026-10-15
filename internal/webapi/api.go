@@ -218,34 +218,62 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid GitHub webhook signature", 401)
 		return
 	}
-	a.Logger.Info("webhook body", "delivery", logValue(delivery), "event", logValue(event), "body", string(body))
 	if delivery == "" || len(delivery) > 160 {
 		a.Logger.Warn("webhook rejected", "reason", "missing or long delivery ID", "event", logValue(event))
 		http.Error(w, "GitHub delivery ID is required", 400)
 		return
 	}
-	if event != "workflow_run" {
-		a.Logger.Info("webhook received", "delivery", delivery, "event", logValue(event), "handled", false)
-		w.WriteHeader(204)
+	// The headers are not signed. The event name is stored, so keep it short.
+	if len(event) > 100 {
+		a.Logger.Warn("webhook rejected", "reason", "long event name", "delivery", delivery)
+		http.Error(w, "GitHub event name is too long", 400)
 		return
 	}
+	// Any event may carry these. A payload without them, or not JSON at all, is still archived.
 	var payload struct {
+		Action     string `json:"action"`
 		Repository struct {
 			FullName string `json:"full_name"`
 		} `json:"repository"`
+		Installation struct {
+			ID int64 `json:"id"`
+		} `json:"installation"`
+		Sender struct {
+			Login string `json:"login"`
+		} `json:"sender"`
 		WorkflowRun struct {
 			ID int64 `json:"id"`
 		} `json:"workflow_run"`
 	}
-	if json.Unmarshal(body, &payload) != nil || payload.WorkflowRun.ID <= 0 {
+	parseErr := json.Unmarshal(body, &payload)
+	d := core.Delivery{ID: delivery, Event: event, Action: payload.Action, Repository: payload.Repository.FullName, InstallationID: payload.Installation.ID}
+	installation := ""
+	if d.InstallationID != 0 {
+		installation = strconv.FormatInt(d.InstallationID, 10)
+	}
+	a.Forward.SendWebhook(delivery, event, body, map[string]string{"github.action": d.Action, "github.repository": d.Repository,
+		"github.installation_id": installation, "github.sender": payload.Sender.Login})
+	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
+	defer cancel()
+	if event != "workflow_run" {
+		a.Logger.Info("webhook received", "delivery", delivery, "event", logValue(event), "handled", false)
+		if err = a.Service.RecordDelivery(ctx, d, core.DeliveryIgnored, nil); err != nil {
+			a.failure(w, err)
+			return
+		}
+		w.WriteHeader(204)
+		return
+	}
+	if parseErr != nil || payload.WorkflowRun.ID <= 0 {
 		a.Logger.Warn("webhook rejected", "reason", "invalid workflow_run payload", "delivery", delivery)
+		if err = a.Service.RecordDelivery(ctx, d, core.DeliveryFailed, errors.New("invalid workflow_run payload")); err != nil {
+			a.Logger.Error("webhook not indexed", "delivery", delivery, "error", core.Redact(err.Error()))
+		}
 		http.Error(w, "Invalid workflow_run payload", 400)
 		return
 	}
 	a.Logger.Info("webhook received", "delivery", delivery, "event", event, "handled", true, "repository", logValue(payload.Repository.FullName), "github_run_id", payload.WorkflowRun.ID)
-	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
-	defer cancel()
-	if err = a.Service.Webhook(ctx, delivery, payload.Repository.FullName, payload.WorkflowRun.ID); err != nil {
+	if err = a.Service.Webhook(ctx, d, payload.WorkflowRun.ID); err != nil {
 		a.failure(w, err)
 		return
 	}

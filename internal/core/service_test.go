@@ -163,6 +163,27 @@ func startRun(t *testing.T, s *Service, deploymentID, agentRun string, i Identit
 	return r
 }
 
+// webhook delivers a workflow_run webhook for GitHub run ghID of repository.
+func webhook(s *Service, delivery, repository string, ghID int64) error {
+	return s.Webhook(context.Background(), Delivery{ID: delivery, Event: "workflow_run", Action: "completed", Repository: repository, InstallationID: 123}, ghID)
+}
+
+// deliveryOutcome reads the index row of a delivery: its outcome and error, "" when NULL.
+func deliveryOutcome(t *testing.T, s *Service, id string) (string, string) {
+	t.Helper()
+	var outcome, problem *string
+	if err := s.DB.QueryRow(context.Background(), "SELECT outcome, error FROM webhook_deliveries WHERE id=$1", id).Scan(&outcome, &problem); err != nil {
+		t.Fatal(id, err)
+	}
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	return deref(outcome), deref(problem)
+}
+
 func TestDatabaseDeploymentCRUDSnapshots(t *testing.T) {
 	s, f := testService(t)
 	ctx := context.Background()
@@ -253,7 +274,7 @@ func TestDatabaseLegacyDeploymentWithRef(t *testing.T) {
 		t.Fatalf("run ref %q, copy ref %q", r.Ref, r.Deployment.Ref)
 	}
 	f.put(WorkflowRun{ID: 777, Attempt: 1, Workflow: "agent.yml", Ref: "feature", Status: "completed", Conclusion: "success"})
-	if err = s.Webhook(ctx, "legacy-delivery", "acme/agent", 777); err != nil {
+	if err = webhook(s, "legacy-delivery", "acme/agent", 777); err != nil {
 		t.Fatal("saving a run with a legacy copy failed", err)
 	}
 	if read, _ := s.Run(ctx, r.ID); read.Status != "completed" || read.Deployment.Ref != "main" {
@@ -271,30 +292,122 @@ func TestDatabaseWebhookAndReconciliation(t *testing.T) {
 	gh.Status = "completed"
 	gh.Conclusion = "failure"
 	f.put(gh)
-	if err = s.Webhook(ctx, "delivery", "acme/agent", 777); err != nil {
+	if err = webhook(s, "delivery", "acme/agent", 777); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.Webhook(ctx, "delivery", "acme/agent", 777); err != nil {
+	if err = webhook(s, "delivery", "acme/agent", 777); err != nil {
 		t.Fatal("redelivery failed", err)
 	}
 	if read, _ := s.Run(ctx, r.ID); read.Status != "failed" {
 		t.Fatal(read)
 	}
 	// A webhook from another repository, or a delayed running state, changes nothing.
-	if err = s.Webhook(ctx, "other-repo", "evil/repo", 777); err != nil {
+	if err = webhook(s, "other-repo", "evil/repo", 777); err != nil {
 		t.Fatal(err)
 	}
 	gh.Status, gh.Conclusion = "in_progress", ""
 	f.put(gh)
-	if err = s.ApplyLifecycle(ctx, r.ID, gh, ""); err != nil {
+	if err = s.ApplyLifecycle(ctx, r.ID, gh, Delivery{}); err != nil {
 		t.Fatal(err)
 	}
 	if read, _ := s.Run(ctx, r.ID); read.Status != "failed" {
 		t.Fatal("terminal run reopened", read.Status)
 	}
 	// Webhooks for workflow runs that never reported are ignored.
-	if err = s.Webhook(ctx, "unknown-run", "acme/agent", 999); err != nil {
+	if err = webhook(s, "unknown-run", "acme/agent", 999); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Every workflow_run delivery is indexed. A failed one is processed again when
+// GitHub sends it again; a handled one, including one indexed before outcomes
+// were kept, is not.
+func TestDatabaseWebhookDeliveryIndex(t *testing.T) {
+	s, f := testService(t)
+	ctx := context.Background()
+	a, i := registeredDeployment(t, s, f)
+	r := startRun(t, s, a.ID, "job", i)
+	gh, _ := f.GetRun(ctx, a, 777)
+	gh.Status, gh.Conclusion = "completed", "success"
+	f.put(gh)
+
+	// A row from before migration 007 has no outcome. It was handled.
+	if _, err := s.DB.Exec(ctx, "INSERT INTO webhook_deliveries(id) VALUES('old')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := webhook(s, "old", "acme/agent", 777); err != nil {
+		t.Fatal(err)
+	}
+	if read, _ := s.Run(ctx, r.ID); read.Status != "running" {
+		t.Fatal("an old handled delivery was applied again", read.Status)
+	}
+	if outcome, _ := deliveryOutcome(t, s, "old"); outcome != "" {
+		t.Fatal("old row changed", outcome)
+	}
+
+	// GitHub does not answer: failed, with the reason.
+	f.mu.Lock()
+	delete(f.workflows, 777)
+	f.mu.Unlock()
+	if err := webhook(s, "flaky", "acme/agent", 777); err == nil {
+		t.Fatal("failure not reported")
+	}
+	if outcome, problem := deliveryOutcome(t, s, "flaky"); outcome != DeliveryFailed || problem != "no workflow" {
+		t.Fatalf("outcome %q, error %q", outcome, problem)
+	}
+	// The redelivery is processed, and the row says handled.
+	f.put(gh)
+	if err := webhook(s, "flaky", "acme/agent", 777); err != nil {
+		t.Fatal(err)
+	}
+	if outcome, problem := deliveryOutcome(t, s, "flaky"); outcome != DeliveryHandled || problem != "" {
+		t.Fatalf("outcome %q, error %q", outcome, problem)
+	}
+	if read, _ := s.Run(ctx, r.ID); read.Status != "completed" {
+		t.Fatal(read.Status)
+	}
+	var event, action, repository string
+	var installation int64
+	if err := s.DB.QueryRow(ctx, "SELECT event, action, repository, installation_id FROM webhook_deliveries WHERE id='flaky'").Scan(&event, &action, &repository, &installation); err != nil ||
+		event != "workflow_run" || action != "completed" || repository != "acme/agent" || installation != 123 {
+		t.Fatalf("%q %q %q %d %v", event, action, repository, installation, err)
+	}
+	// Once handled, a redelivery that would fail or find nothing leaves it handled.
+	if err := webhook(s, "flaky", "acme/agent", 777); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordDelivery(ctx, Delivery{ID: "flaky"}, DeliveryFailed, errors.New("late")); err != nil {
+		t.Fatal(err)
+	}
+	if outcome, _ := deliveryOutcome(t, s, "flaky"); outcome != DeliveryHandled {
+		t.Fatal(outcome)
+	}
+
+	// A run Agbredo does not know, or another repository: ignored.
+	for _, d := range []struct{ id, repository string }{{"unknown-run", "acme/agent"}, {"other-repo", "evil/repo"}} {
+		ghID := int64(999)
+		if d.id == "other-repo" {
+			ghID = 777
+		}
+		if err := webhook(s, d.id, d.repository, ghID); err != nil {
+			t.Fatal(err)
+		}
+		if outcome, _ := deliveryOutcome(t, s, d.id); outcome != DeliveryIgnored {
+			t.Fatal(d.id, outcome)
+		}
+	}
+	// An ignored delivery that fails on redelivery becomes failed, then ignored again.
+	if err := s.RecordDelivery(ctx, Delivery{ID: "unknown-run"}, DeliveryFailed, errors.New("timeout")); err != nil {
+		t.Fatal(err)
+	}
+	if outcome, problem := deliveryOutcome(t, s, "unknown-run"); outcome != DeliveryFailed || problem != "timeout" {
+		t.Fatal(outcome, problem)
+	}
+	if err := webhook(s, "unknown-run", "acme/agent", 999); err != nil {
+		t.Fatal(err)
+	}
+	if outcome, problem := deliveryOutcome(t, s, "unknown-run"); outcome != DeliveryIgnored || problem != "" {
+		t.Fatal(outcome, problem)
 	}
 }
 
