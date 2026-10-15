@@ -511,7 +511,7 @@ func TestRunPageShowsPullRequests(t *testing.T) {
 		since  time.Time
 		want   string
 	}{
-		{"completed", started.Add(-time.Hour), "No pull request. GitHub reported none that Agbredo could link to this run."},
+		{"completed", started.Add(-time.Hour), "No pull request linked. GitHub reported none that Agbredo could link to this run."},
 		{"running", started.Add(-time.Hour), "None linked yet."},
 		{"completed", started.Add(time.Hour), "Unavailable. This run started before Agbredo began recording pull requests."},
 	} {
