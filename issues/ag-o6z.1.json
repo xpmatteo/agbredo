@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Matteo Vaccari",
   "blocked_by": [],
   "blocks": [
     "ag-o6z.2"
@@ -10,8 +10,8 @@
   "labels": [],
   "parent": "ag-o6z",
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Archive every verified webhook delivery to OpenObserve and index it in Postgres",
   "type": "task",
-  "updated_at": "2026-10-15T08:59:00Z"
+  "updated_at": "2026-10-15T09:17:54Z"
 }
