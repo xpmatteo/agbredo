@@ -17,11 +17,15 @@
     {
       "text": "Review (2026-10-15): no bugs; 5 deviations accepted. Fix now: drop-log with delivery id, docs on service.name not reserved, UTF-8 cut, handled wording, routes doc on refused deliveries, real-path test for handled redelivery, ignored-\u003ehandled test, 'webhook not indexed' log. No action: repeated upsert SQL (WHERE differs on purpose); 500/400 tests without DB (optional). Note: rolling back to pre-007 code would treat failed/ignored rows as handled (ON CONFLICT DO NOTHING); the 30 s poll covers open runs, so accepted.",
       "timestamp": "2026-10-15T09:30:54Z"
+    },
+    {
+      "text": "Review fixes in commit 452d5f0: webhook drop logs with delivery ID, UTF-8-safe error cut, 'webhook not indexed' log on ignored path, handled wording, docs on refused headers and on service.name not being reserved, two new tests (ignored-\u003ehandled, UTF-8 cut) and the handled-stays-handled case on the real path. make test passes.",
+      "timestamp": "2026-10-15T09:32:09Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Archive every verified webhook delivery to OpenObserve and index it in Postgres",
   "type": "task",
-  "updated_at": "2026-10-15T09:30:54Z"
+  "updated_at": "2026-10-15T09:32:09Z"
 }
