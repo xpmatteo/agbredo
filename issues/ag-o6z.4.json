@@ -31,11 +31,15 @@
     {
       "text": "Review 2026-10-15, Matt's decisions: (S1) ignore 'edited' deliveries entirely: an editor could add a trailer, forge a declared link and erase findings; the pipeline writes the trailer at opening, so link and findings are decided at opening only. (S2) runs table says 'No PR linked'. (S3) same-repo check before inferring; fork bot PR without valid trailer -\u003e unlinked, reason pr_from_fork. Nits N1,N2(doc),N3,N5,N6,N7,N8 fix now; N4 no action. Open question 'record a PR on edited if opened was lost' answered by S1: no.",
       "timestamp": "2026-10-15T13:20:44Z"
+    },
+    {
+      "text": "Review fixes in commit adf4e15: S1 edited ignored before parsing (core, parser, API accept opened only; refresh code removed; TestDatabaseEditedIsIgnored + webapi edited case); S2 'No PR linked'; S3 new reason pr_from_fork (no trailer, head repo != base or missing) before inferring, pure + DB tests; N1 event only when UPDATE affected 1 row; N3 LinkPullRequests continues past failing rows, errors joined (stops on ctx error); N5 UnlinkedLimit passed to page; N6 test comments fixed; N2/N7/N8 docs (Limits: pre-webhook runs give trailer_outside_window; installation without PR permission shows 'No PR linked' for every run; facts as at opening, never updated). Migration 008 unchanged. make test passes.",
+      "timestamp": "2026-10-15T13:23:34Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Record bot PRs and link them to runs: declared, inferred or unlinked, with findings",
   "type": "task",
-  "updated_at": "2026-10-15T13:20:44Z"
+  "updated_at": "2026-10-15T13:23:34Z"
 }
