@@ -19,11 +19,15 @@
     {
       "text": "2026-10-15: Matt has updated the GitHub App (Pull requests: read, Pull request event subscribed, installations accepted). pull_request deliveries should now arrive.",
       "timestamp": "2026-10-15T11:12:05Z"
+    },
+    {
+      "text": "2026-10-15: Matt said go. Human-PR rule kept: only human PRs carrying a trailer are stored (unlinked, trailer_by_human); other human PRs stay only in the raw archive.",
+      "timestamp": "2026-10-15T11:29:11Z"
     }
   ],
   "priority": 2,
   "status": "open",
   "title": "Record bot PRs and link them to runs: declared, inferred or unlinked, with findings",
   "type": "task",
-  "updated_at": "2026-10-15T11:12:05Z"
+  "updated_at": "2026-10-15T11:29:11Z"
 }
