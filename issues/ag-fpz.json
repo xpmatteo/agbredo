@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-15T10:45:06Z",
+  "description": "Split out of ag-o6z on 2026-10-15 (Matt): ag-o6z audits what an agent did, up to opening its PR. What people do with the PR afterwards (merged, closed without merging, reopened, review comments, time to merge) measures how useful the agent is. That is performance evaluation and lives here.\n\nInputs already available once ag-o6z.4 lands: Postgres table pull_requests links each bot PR to a run (declared / inferred / unlinked). Raw pull_request deliveries (closed, reopened, etc.) are archived in OpenObserve stream github_webhooks since ag-o6z.1, so history can be rebuilt from there.\n\nExample motivating data (2026-10-15): audit PRs in xpmatteo/rpg-interpreter: 13 so far, 1 merged, 11 closed without merging, 1 open.\n\nNot designed yet. Open questions for Matt: which measures (merge rate per agent / pipeline version, time to merge, closed-without-merge reasons); whether to store PR state in Postgres or compute from the archive; how it relates to budgets. Needs a design talk before any child ticket (it changes what the server stores).",
+  "id": "ag-fpz",
+  "labels": [],
+  "priority": 3,
+  "status": "open",
+  "title": "[EPIC] Evaluate agent performance from what happens to their PRs",
+  "type": "epic",
+  "updated_at": "2026-10-15T10:45:06Z"
+}
