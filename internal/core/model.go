@@ -102,9 +102,13 @@ type Run struct {
 	// AwaitingApproval says the queued run waits for a maintainer to approve
 	// it (GitHub's action_required, e.g. a pull request from a fork). The poll
 	// leaves it alone; the approval's webhook moves it on.
-	AwaitingApproval bool      `json:"awaiting_approval,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	AwaitingApproval bool `json:"awaiting_approval,omitempty"`
+	// Jobs are the jobs of this attempt and their steps, as GitHub listed
+	// them once the run had finished (see FetchJobs). Nil (no "jobs" key) when
+	// Agbredo does not know them; an empty list when GitHub listed none.
+	Jobs      []Job     `json:"jobs,omitzero"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 	// Per agent run, from telemetry sent straight to Agbredo. The totals above include these.
 	// The JSON key "sources" is kept on purpose: stored rows and clients use it.
 	AgentRuns map[string]*AgentRunUsage `json:"sources,omitempty"`
@@ -182,8 +186,38 @@ type ReferencedWorkflow struct {
 	SHA  string
 }
 
+// Job is one job of a run attempt, as GitHub lists it. A job of a reusable
+// workflow is named after the caller's job and the pipeline's, e.g.
+// "audit / audit". Missing times are zero, and not stored.
+type Job struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Status      string    `json:"status,omitempty"`
+	Conclusion  string    `json:"conclusion,omitempty"`
+	StartedAt   time.Time `json:"started_at,omitzero"`
+	CompletedAt time.Time `json:"completed_at,omitzero"`
+	RunnerName  string    `json:"runner_name,omitempty"`
+	// URL is the job's page on GitHub (html_url).
+	URL   string `json:"url,omitempty"`
+	Steps []Step `json:"steps,omitempty"`
+}
+
+// Step is one step of a job, in GitHub's order. Numbers may jump: GitHub
+// numbers post steps after the last step of the job.
+type Step struct {
+	Number      int64     `json:"number"`
+	Name        string    `json:"name"`
+	Status      string    `json:"status,omitempty"`
+	Conclusion  string    `json:"conclusion,omitempty"`
+	StartedAt   time.Time `json:"started_at,omitzero"`
+	CompletedAt time.Time `json:"completed_at,omitzero"`
+}
+
 type Backend interface {
 	GetRunAttempt(context.Context, Deployment, int64, int64) (WorkflowRun, error)
+	// ListJobs lists the jobs of a run attempt, with their steps. It may stop
+	// once it has MaxJobs. An empty list is an answer: GitHub listed no jobs.
+	ListJobs(ctx context.Context, a Deployment, runID, attempt int64) ([]Job, error)
 	// Installation is the ID of the GitHub App installation on a repository,
 	// asked as the App itself. ErrNotInstalled when the App is not installed.
 	Installation(ctx context.Context, owner, repository string) (int64, error)

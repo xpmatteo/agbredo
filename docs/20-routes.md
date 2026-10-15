@@ -74,7 +74,7 @@ For people. A browser session is needed: GitHub OAuth, then a signed cookie. A u
 | `POST /agents/{id}` | Save a deployment. Refused if the revision is old, or with `400` if another deployment has its repository + workflow file |
 | `POST /agents/{id}/delete` | Hide a deployment. Its runs stay |
 | `GET /runs` | All runs |
-| `GET /runs/{id}` | One run: totals, trigger event, ref, head branch and commit, GitHub start and completion, pipeline and version, agent runs (Claude Code version, models, effort, usage) or "No telemetry received", event timeline |
+| `GET /runs/{id}` | One run: totals, trigger event, ref, head branch and commit, GitHub start and completion, pipeline and version, agent runs (Claude Code version, models, effort, usage) or "No telemetry received", jobs and steps (one table per job: name with its GitHub link, conclusion, start and end; its steps in GitHub's order with their numbers as given), event timeline |
 | `GET /static/style.css` | The stylesheet |
 
 ## Sign-in

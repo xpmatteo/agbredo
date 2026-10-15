@@ -23,6 +23,9 @@ type gitHub struct{ run core.WorkflowRun }
 func (g gitHub) GetRunAttempt(context.Context, core.Deployment, int64, int64) (core.WorkflowRun, error) {
 	return g.run, nil
 }
+func (g gitHub) ListJobs(context.Context, core.Deployment, int64, int64) ([]core.Job, error) {
+	return []core.Job{}, nil
+}
 func (g gitHub) Installation(_ context.Context, owner, repository string) (int64, error) {
 	if owner+"/"+repository != "acme/agent" {
 		return 0, core.ErrNotInstalled

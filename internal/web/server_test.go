@@ -371,3 +371,54 @@ func TestMoneyShowsTwoDigits(t *testing.T) {
 		}
 	}
 }
+
+// The run page lists each job with its steps in GitHub's order, numbers as
+// given, and missing times as missing.
+func TestRunPageShowsJobsAndSteps(t *testing.T) {
+	started := time.Date(2026, 10, 15, 7, 8, 2, 0, time.UTC)
+	run := core.Run{ID: "run-1", Status: "completed", Jobs: []core.Job{{ID: 501, Name: "audit / audit", Status: "completed", Conclusion: "success",
+		StartedAt: started, RunnerName: "GitHub Actions 7", URL: "https://github.com/acme/agent/actions/runs/777/job/501", Steps: []core.Step{
+			{Number: 2, Name: "Gate", Status: "completed", Conclusion: "success", StartedAt: started, CompletedAt: started.Add(2 * time.Second)},
+			{Number: 3, Name: "Audit with Claude", Status: "completed", Conclusion: "skipped"},
+			{Number: 28, Name: "Post <Gate>", Status: "in_progress"}}},
+		{ID: 502, Name: "report", Status: "completed", Conclusion: "skipped"}}}
+	body := serve(&testService{run: run}, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+	for _, want := range []string{
+		"<h2>Jobs and steps</h2>",
+		`<a href="https://github.com/acme/agent/actions/runs/777/job/501" target="_blank" rel="noopener noreferrer">audit / audit ↗</a></strong><span class="badge">success</span>`,
+		"Start / end: 2026-10-15 07:08:02 UTC / Unavailable",
+		`<tr><td>2</td><td>Gate</td><td><span class="badge">success</span></td><td>2026-10-15 07:08:02 UTC</td><td>2026-10-15 07:08:04 UTC</td></tr>`,
+		`<tr><td>3</td><td>Audit with Claude</td><td><span class="badge">skipped</span></td><td>Unavailable</td><td>Unavailable</td></tr>`,
+		`<tr><td>28</td><td>Post &lt;Gate&gt;</td><td><span class="badge">in_progress</span>`,
+		`<strong>report</strong><span class="badge">skipped</span>`,
+		"GitHub listed no steps for this job.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("want %s in %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Agbredo keeps at most") {
+		t.Fatal("says jobs were cut")
+	}
+	run.Jobs = make([]core.Job, core.MaxJobs)
+	if body = serve(&testService{run: run}, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(); !strings.Contains(body, "Agbredo keeps at most 50 jobs per run and 100 steps per job.") {
+		t.Fatal("does not say jobs may be cut", body)
+	}
+}
+
+// No jobs, unknown jobs and a run still going each say so.
+func TestRunPageWithoutJobs(t *testing.T) {
+	for _, tc := range []struct {
+		run  core.Run
+		want string
+	}{
+		{core.Run{ID: "run-1", Status: "completed", Jobs: []core.Job{}}, "GitHub listed no jobs for this run attempt."},
+		{core.Run{ID: "run-1", Status: "failed"}, "<h2>Jobs and steps</h2><div class=\"panel\">Unavailable."},
+		{core.Run{ID: "run-1", Status: "running"}, "Recorded when the run finishes."},
+	} {
+		body := serve(&testService{run: tc.run}, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+		if !strings.Contains(body, tc.want) {
+			t.Fatalf("want %s in %s", tc.want, body)
+		}
+	}
+}

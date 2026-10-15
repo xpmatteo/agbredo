@@ -21,6 +21,21 @@ type fakeBackend struct {
 	lookups       int
 	// installErr, if set, is what every installation lookup answers.
 	installErr error
+	// jobs are the jobs of each GitHub run ID; a run without an entry has
+	// none that GitHub gives: ListJobs fails. jobCalls counts the calls.
+	jobs     map[int64][]Job
+	jobCalls int
+}
+
+func (f *fakeBackend) ListJobs(_ context.Context, _ Deployment, id, _ int64) ([]Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.jobCalls++
+	jobs, ok := f.jobs[id]
+	if !ok {
+		return nil, errors.New("GitHub gives no jobs")
+	}
+	return jobs, nil
 }
 
 func (f *fakeBackend) Installation(_ context.Context, owner, repository string) (int64, error) {
@@ -132,7 +147,7 @@ func testService(t *testing.T) (*Service, *fakeBackend) {
 	if err = store.Migrate(ctx, pool); err != nil {
 		t.Fatal("repeat migration", err)
 	}
-	fake := &fakeBackend{workflows: map[int64]WorkflowRun{}, installations: map[string]int64{}}
+	fake := &fakeBackend{workflows: map[int64]WorkflowRun{}, installations: map[string]int64{}, jobs: map[int64][]Job{}}
 	return &Service{DB: pool, Backend: fake}, fake
 }
 

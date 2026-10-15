@@ -162,6 +162,52 @@ func (b *Backend) GetRunAttempt(ctx context.Context, a core.Deployment, id int64
 	return convert(r, workflow), nil
 }
 
+// maxJobPages is the most pages of jobs asked for one run attempt. With 100
+// jobs per page, one page is enough for core.MaxJobs; the bound only guards
+// against a GitHub that keeps sending small pages.
+const maxJobPages = 5
+
+// ListJobs lists the jobs of a run attempt with their steps
+// (GET /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs),
+// 100 per page, and stops once it has core.MaxJobs. If a page fails, it
+// returns the error and no jobs. An attempt without jobs gives an empty list.
+func (b *Backend) ListJobs(ctx context.Context, a core.Deployment, id, attempt int64) ([]core.Job, error) {
+	c, err := b.client(a.InstallationID)
+	if err != nil {
+		return nil, err
+	}
+	jobs := []core.Job{}
+	opts := &gh.ListOptions{PerPage: 100}
+	for range maxJobPages {
+		page, resp, err := c.Actions.ListWorkflowJobsAttempt(ctx, a.Owner, a.Repository, id, attempt, opts)
+		if err != nil {
+			return nil, fmt.Errorf("list GitHub workflow jobs: %w", err)
+		}
+		for _, j := range page.Jobs {
+			jobs = append(jobs, convertJob(j))
+		}
+		if resp.NextPage == 0 || len(jobs) >= core.MaxJobs {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return jobs, nil
+}
+
+// convertJob keeps what Agbredo records of a job. Missing times stay zero.
+func convertJob(j *gh.WorkflowJob) core.Job {
+	job := core.Job{ID: j.GetID(), Name: j.GetName(), Status: j.GetStatus(), Conclusion: j.GetConclusion(),
+		StartedAt: j.GetStartedAt().Time, CompletedAt: j.GetCompletedAt().Time, RunnerName: j.GetRunnerName(), URL: j.GetHTMLURL()}
+	for _, st := range j.Steps {
+		if st == nil {
+			continue
+		}
+		job.Steps = append(job.Steps, core.Step{Number: st.GetNumber(), Name: st.GetName(), Status: st.GetStatus(), Conclusion: st.GetConclusion(),
+			StartedAt: st.GetStartedAt().Time, CompletedAt: st.GetCompletedAt().Time})
+	}
+	return job
+}
+
 func VerifyWebhook(secret string, body []byte, signature string) bool {
 	if secret == "" || !strings.HasPrefix(signature, "sha256=") {
 		return false

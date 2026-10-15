@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -17,6 +18,11 @@ type Service struct {
 	// DefaultThresholdMicros is the threshold of a deployment created by its
 	// first run (see MintTokenForWorkflow).
 	DefaultThresholdMicros int64
+
+	// The worker fetches the jobs of finished runs (see FetchJobs).
+	jobsOnce    sync.Once
+	jobsDue     chan struct{}
+	jobsRetries jobsRetries
 }
 
 func (s *Service) Deployment(ctx context.Context, id string) (Deployment, error) {

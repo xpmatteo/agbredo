@@ -79,6 +79,13 @@ func New(service Service, auth Auth) *Server {
 			return usageTokens(u.Usage, kind)
 		},
 		"usageTokens": usageTokens,
+		"outcome":     outcome,
+		// jobsKnown says whether Agbredo has the run's jobs, even an empty list.
+		"jobsKnown":  func(r core.Run) bool { return r.Jobs != nil },
+		"jobsCapped": jobsCapped,
+		"terminal":   core.Terminal,
+		"maxJobs":    func() int { return core.MaxJobs },
+		"maxSteps":   func() int { return core.MaxSteps },
 		// githubTime is a time from GitHub, which may be unknown.
 		"githubTime": func(t time.Time) string {
 			if t.IsZero() {
@@ -329,4 +336,31 @@ func usageTokens(u *core.ClaudeUsage, kind string) string {
 	default:
 		return measured(u.CacheCreationTokens)
 	}
+}
+
+// outcome is what a job or step ended with: GitHub's conclusion, or its
+// status while it has none.
+func outcome(status, conclusion string) string {
+	switch {
+	case conclusion != "":
+		return conclusion
+	case status != "":
+		return status
+	default:
+		return "Unavailable"
+	}
+}
+
+// jobsCapped says whether the run's jobs or steps reached the limits on what
+// Agbredo keeps, so GitHub may have listed more.
+func jobsCapped(r core.Run) bool {
+	if len(r.Jobs) >= core.MaxJobs {
+		return true
+	}
+	for _, j := range r.Jobs {
+		if len(j.Steps) >= core.MaxSteps {
+			return true
+		}
+	}
+	return false
 }
