@@ -57,9 +57,11 @@ OpenTelemetry from Claude Code. `Authorization: Bearer agb_...`, the token from 
 GitHub App webhooks. Needs `X-Hub-Signature-256` (HMAC of the body with `AGBREDO_GITHUB_WEBHOOK_SECRET`) and `X-GitHub-Delivery`. Body up to 1 MiB.
 
 - Every delivery with a good signature is archived raw in the telemetry store, if `OTLP_FORWARD_URL` is set, and indexed in `webhook_deliveries` as `handled`, `ignored` or `failed` (see `10-design.md`, Webhook flow). A delivery refused with `401`, `413`, or `400` for its headers (missing or long delivery ID, event name over 100 characters) is neither.
-- Only `workflow_run` events change anything. The server reads the run from the signed payload, without asking GitHub, and records it under the live deployment of its repository and workflow file, creating the run if it is new, even when the deployment is disabled. A run of a workflow with no deployment is ignored. The payload must have the shape of a `workflow_run` event (see `10-design.md`, Runs from webhooks), or it gets `400`. `ping` and other events get `204`.
+- Only `workflow_run` and `pull_request` events change anything. For `workflow_run`, the server reads the run from the signed payload, without asking GitHub, and records it under the live deployment of its repository and workflow file, creating the run if it is new, even when the deployment is disabled. A run of a workflow with no deployment is ignored. The payload must have the shape of a `workflow_run` event (see `10-design.md`, Runs from webhooks), or it gets `400`.
+- For `pull_request` with action `opened` or `edited`, the server records the pull request if its repository has a live deployment and its author is a bot or its body has an `Agbredo-Run:` trailer, and links it to a run (see `10-design.md`, Pull requests). The payload must have the shape of a `pull_request` event, or it gets `400`. Other actions (`closed`, `reopened`, ...) are ignored.
+- `ping` and other events get `204`.
 - A handled delivery ID is applied once. A failed one is processed again when GitHub sends it again.
-- `204` on success. Errors: `401` bad signature, `400` missing delivery ID, event name over 100 characters, or bad `workflow_run` payload, `413` too large, `500` the database failed.
+- `204` on success. Errors: `401` bad signature, `400` missing delivery ID, event name over 100 characters, or bad `workflow_run` or `pull_request` payload, `413` too large, `500` the database failed.
 
 ## Dashboard
 
@@ -67,14 +69,14 @@ For people. A browser session is needed: GitHub OAuth, then a signed cookie. A u
 
 | Route | Does |
 | --- | --- |
-| `GET /` | Overview: active runs, failures, estimated consumption, recent runs |
+| `GET /` | Overview: active runs, failures, estimated consumption, recent runs with their outcome (see `GET /runs`) |
 | `GET /agents` | List deployments, and the form to add one by hand |
 | `POST /agents` | Add a deployment by hand, before its first run. Optional: the first run creates it anyway. `400` if its repository + workflow file already has one |
-| `GET /agents/{id}` | One deployment: the pipeline versions used by its most recent runs (up to 20), and its form |
+| `GET /agents/{id}` | One deployment: the pipeline versions used by its most recent runs (up to 20), the unlinked pull requests of its repository (up to 20, newest first, with reason, candidate runs and findings), and its form |
 | `POST /agents/{id}` | Save a deployment. Refused if the revision is old, or with `400` if another deployment has its repository + workflow file |
 | `POST /agents/{id}/delete` | Hide a deployment. Its runs stay |
-| `GET /runs` | All runs |
-| `GET /runs/{id}` | One run: totals, trigger event, ref, head branch and commit, GitHub start and completion, pipeline and version, agent runs (Claude Code version, models, effort, usage) or "No telemetry received", jobs and steps (one table per job: name with its GitHub link, conclusion, start and end; its steps in GitHub's order with their numbers as given), event timeline |
+| `GET /runs` | All runs. The Outcome column says "Opened PR #13" for each pull request linked to the run (labelled "inferred" when it is), "No PR" when the run has finished with none and Agbredo was recording pull requests for the whole run, and "Unavailable" otherwise |
+| `GET /runs/{id}` | One run: totals, trigger event, ref, head branch and commit, GitHub start and completion, pipeline and version, agent runs (Claude Code version, models, effort, usage) or "No telemetry received", pull requests linked to the run (number with its GitHub link, title, author, when opened, link level and trailer, findings; not what happened to them later), jobs and steps (one table per job: name with its GitHub link, conclusion, start and end; its steps in GitHub's order with their numbers as given), event timeline |
 | `GET /static/style.css` | The stylesheet |
 
 ## Sign-in

@@ -18,8 +18,17 @@ import (
 // workflowRunBody is a workflow_run webhook payload for one run attempt.
 func workflowRunBody(repository, workflow string, id int64, status, conclusion string) string {
 	return fmt.Sprintf(`{"action":"completed","workflow_run":{"id":%d,"run_attempt":1,"path":".github/workflows/%s","status":%q,"conclusion":%q,
-		"head_branch":"main","event":"schedule","repository":{"full_name":%q}},"repository":{"full_name":%q},"installation":{"id":42}}`,
+		"head_branch":"main","event":"schedule","run_started_at":"2026-10-15T07:08:00Z","updated_at":"2026-10-15T07:08:17Z","repository":{"full_name":%q}},"repository":{"full_name":%q},"installation":{"id":42}}`,
 		id, workflow, status, conclusion, repository, repository)
+}
+
+// pullRequestBody is a pull_request webhook payload of a pull request that
+// github-actions opened in repository (ID 7) at 2026-10-15 07:08:10 UTC.
+func pullRequestBody(action, repository string, number int, body string) string {
+	return fmt.Sprintf(`{"action":%q,"number":%d,"pull_request":{"number":%d,"title":"Audit fixes","body":%q,"created_at":"2026-10-15T07:08:10Z",
+		"html_url":"https://github.com/%s/pull/%d","user":{"login":"github-actions[bot]","type":"Bot"},
+		"head":{"ref":"audit","repo":{"id":7,"full_name":%q}},"base":{"ref":"main","repo":{"id":7,"full_name":%q}}},
+		"repository":{"id":7,"full_name":%q},"installation":{"id":42}}`, action, number, number, body, repository, number, repository, repository, repository)
 }
 
 // archived is one webhook delivery as the telemetry store received it.
@@ -107,13 +116,13 @@ func TestDatabaseWebhookDeliveriesAreArchivedAndIndexed(t *testing.T) {
 		t.Fatalf("ping: status %d", code)
 	}
 	expectOutcome("ping-1", core.DeliveryIgnored, "")
-	pr := `{"action":"opened","number":13,"repository":{"full_name":"acme/agent"},"installation":{"id":42},"sender":{"login":"agbredo-bot[bot]"}}`
+	pr := `{"action":"closed","number":13,"repository":{"full_name":"acme/agent"},"installation":{"id":42},"sender":{"login":"agbredo-bot[bot]"}}`
 	if code := deliver("pull_request", "pr-1", pr); code != http.StatusNoContent {
 		t.Fatalf("pull_request: status %d", code)
 	}
 	expectOutcome("pr-1", core.DeliveryIgnored, "")
 	var installation int64
-	if r, _ := index("pr-1"); text(r.event) != "pull_request" || text(r.action) != "opened" || text(r.repository) != "acme/agent" ||
+	if r, _ := index("pr-1"); text(r.event) != "pull_request" || text(r.action) != "closed" || text(r.repository) != "acme/agent" ||
 		service.DB.QueryRow(ctx, "SELECT installation_id FROM webhook_deliveries WHERE id='pr-1'").Scan(&installation) != nil || installation != 42 {
 		t.Fatalf("pull_request row: %q %q %q %d", text(r.event), text(r.action), text(r.repository), installation)
 	}
@@ -169,8 +178,27 @@ func TestDatabaseWebhookDeliveriesAreArchivedAndIndexed(t *testing.T) {
 		}
 	}
 
+	// A pull request a bot opened in the repository: recorded and linked to
+	// the run its trailer names. One without the shape of a pull_request
+	// event: failed.
+	opened := pullRequestBody("opened", "acme/agent", 14, "Fixes.\n\nAgbredo-Run: 778/1")
+	if code := deliver("pull_request", "pr-2", opened); code != http.StatusNoContent {
+		t.Fatalf("opened pull request: status %d", code)
+	}
+	expectOutcome("pr-2", core.DeliveryHandled, "")
+	var link string
+	if err := service.DB.QueryRow(ctx, "SELECT link FROM pull_requests WHERE id='7:14'").Scan(&link); err != nil || link != core.LinkDeclared {
+		t.Fatalf("pull request: %q %v", link, err)
+	}
+	for _, body := range []string{`{"action":"opened"}`, strings.Replace(opened, `"created_at"`, `"updated_at"`, 1), workflowRunBody("acme/agent", "agent.yml", 778, "completed", "success")} {
+		if code := deliver("pull_request", "pr-bad", strings.Replace(body, `"action":"completed"`, `"action":"opened"`, 1)); code != http.StatusBadRequest {
+			t.Fatalf("invalid pull_request payload %s: status %d", body, code)
+		}
+	}
+	expectOutcome("pr-bad", core.DeliveryFailed, "invalid pull_request payload")
+
 	// Every verified delivery reached the store, in its own stream, unchanged.
-	want := []string{"ping-1", "pr-1", "wr-unknown", "wr-bad", "wr-bad", "wr-bad", "wr-bad", "wr-1", "wr-1", "wr-2"}
+	want := []string{"ping-1", "pr-1", "wr-unknown", "wr-bad", "wr-bad", "wr-bad", "wr-bad", "wr-1", "wr-1", "wr-2", "pr-2", "pr-bad", "pr-bad", "pr-bad"}
 	for n, delivery := range want {
 		select {
 		case got := <-received:

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"path"
 	"strings"
@@ -256,4 +257,46 @@ func ParseWorkflowRunEvent(body []byte) (core.WorkflowRun, error) {
 		return core.WorkflowRun{}, ErrBadPayload
 	}
 	return run, nil
+}
+
+// ErrBadPullRequest says a pull_request webhook payload does not have the
+// shape of its event.
+var ErrBadPullRequest = errors.New("invalid pull_request payload")
+
+// ParsePullRequestEvent reads a pull_request webhook payload of action opened
+// or edited. Its signature has been checked, so its facts come from GitHub.
+// The X-GitHub-Event header is not signed, though, so the payload must have
+// the shape of a pull_request event: one of those actions, the base
+// repository with its ID and owner/repository, and a pull_request object
+// with its number (the same as the payload's, if it has one), author login
+// and type, head ref, creation time, and a base in the same repository (by
+// ID when the base gives one, and by name, ignoring case). Otherwise it is
+// ErrBadPullRequest. The head repository may be missing: GitHub sends none
+// for a deleted fork. The body may be null.
+func ParsePullRequestEvent(body []byte) (core.PullRequestFacts, error) {
+	var e gh.PullRequestEvent
+	if err := json.Unmarshal(body, &e); err != nil {
+		return core.PullRequestFacts{}, ErrBadPullRequest
+	}
+	switch e.GetAction() {
+	case "opened", "edited":
+	default:
+		return core.PullRequestFacts{}, ErrBadPullRequest
+	}
+	p, repo := e.GetPullRequest(), e.GetRepo()
+	repository := repo.GetFullName()
+	owner, name, ok := strings.Cut(repository, "/")
+	if p == nil || !ok || owner == "" || name == "" || repo.GetID() <= 0 {
+		return core.PullRequestFacts{}, ErrBadPullRequest
+	}
+	number := p.GetNumber()
+	base := p.GetBase().GetRepo()
+	if number <= 0 || int64(number) > math.MaxInt32 || (e.GetNumber() != 0 && e.GetNumber() != number) ||
+		p.GetUser().GetLogin() == "" || p.GetUser().GetType() == "" || p.GetHead().GetRef() == "" || p.GetCreatedAt().IsZero() ||
+		base == nil || !strings.EqualFold(base.GetFullName(), repository) || (base.GetID() != 0 && base.GetID() != repo.GetID()) {
+		return core.PullRequestFacts{}, ErrBadPullRequest
+	}
+	return core.PullRequestFacts{RepositoryID: repo.GetID(), Repository: repository, Number: int64(number), Title: p.GetTitle(),
+		URL: p.GetHTMLURL(), Author: p.GetUser().GetLogin(), AuthorType: p.GetUser().GetType(), HeadRef: p.GetHead().GetRef(),
+		HeadRepo: p.GetHead().GetRepo().GetFullName(), BaseRef: p.GetBase().GetRef(), CreatedAt: p.GetCreatedAt().Time.UTC(), Body: p.GetBody()}, nil
 }

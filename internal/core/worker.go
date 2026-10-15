@@ -138,20 +138,7 @@ func (s *Service) RecordDelivery(ctx context.Context, d Delivery, outcome string
 // The delivery is indexed as handled, ignored or failed. A handled delivery is
 // not applied again.
 func (s *Service) Webhook(ctx context.Context, d Delivery, gh WorkflowRun) error {
-	handled, err := s.webhook(ctx, d, gh)
-	outcome := DeliveryIgnored
-	if err != nil {
-		outcome = DeliveryFailed
-	} else if handled {
-		return nil // indexed with the run, in its transaction
-	}
-	// The request may have timed out; the index is still written.
-	recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	if e := s.RecordDelivery(recordCtx, d, outcome, err); e != nil {
-		return errors.Join(err, e)
-	}
-	return err
+	return s.indexDelivery(ctx, d, func() (bool, error) { return s.webhook(ctx, d, gh) })
 }
 
 func (s *Service) webhook(ctx context.Context, d Delivery, gh WorkflowRun) (bool, error) {
@@ -164,20 +151,12 @@ func (s *Service) webhook(ctx context.Context, d Delivery, gh WorkflowRun) (bool
 		return false, err
 	}
 	defer tx.Rollback(ctx)
-	if d.ID != "" {
-		// A failed or ignored delivery may be handled when GitHub sends it again.
-		// Rows from before outcomes were kept have none, and were all handled.
-		tag, e := tx.Exec(ctx, `INSERT INTO webhook_deliveries(id, event, action, repository, installation_id, outcome)
-			VALUES($1, NULLIF($2,''), NULLIF($3,''), NULLIF($4,''), NULLIF($5,0), 'handled')
-			ON CONFLICT (id) DO UPDATE SET event=EXCLUDED.event, action=EXCLUDED.action, repository=EXCLUDED.repository,
-				installation_id=EXCLUDED.installation_id, outcome='handled', error=NULL
-			WHERE webhook_deliveries.outcome IN ('failed','ignored')`, d.ID, d.Event, d.Action, d.Repository, d.InstallationID)
-		if e != nil {
-			return false, e
-		}
-		if tag.RowsAffected() == 0 {
-			return true, nil // handled before
-		}
+	first, err := markHandled(ctx, tx, d)
+	if err != nil {
+		return false, err
+	}
+	if !first {
+		return true, nil // handled before
 	}
 	a, err := findDeployment(ctx, tx, owner, repository, gh.Workflow)
 	switch {
@@ -250,8 +229,14 @@ func runsPullRequestWorkflow(event string) bool {
 
 // Reconcile polls GitHub for the runs that have not finished. A run waiting
 // for approval is left out: it may wait for days, and the approval's webhook
-// moves it on. The jobs of finished runs are fetched apart (FetchJobs).
+// moves it on. Then it tries again to link the pull requests of the last
+// hour that are unlinked, from the database alone (LinkPullRequests). The
+// jobs of finished runs are fetched apart (FetchJobs).
 func (s *Service) Reconcile(ctx context.Context) error {
+	return errors.Join(s.poll(ctx), s.LinkPullRequests(ctx))
+}
+
+func (s *Service) poll(ctx context.Context) error {
 	rows, err := s.DB.Query(ctx, "SELECT document FROM runs WHERE status IN ('queued','running') AND document->>'awaiting_approval' IS DISTINCT FROM 'true' ORDER BY created_at")
 	if err != nil {
 		return err

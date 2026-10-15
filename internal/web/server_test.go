@@ -31,10 +31,18 @@ type testService struct {
 	events     []core.Event
 	saved      core.Deployment
 	saveErr    error
+	// prs are the run's linked pull requests (Fleet and run page), or the
+	// repository's unlinked ones (deployment page).
+	prs   []core.PullRequest
+	since time.Time
 }
 
 func (s *testService) Fleet(context.Context) (core.Fleet, error) {
-	return core.Fleet{Deployments: []core.Deployment{s.deployment}, Runs: []core.Run{s.run}}, nil
+	f := core.Fleet{Deployments: []core.Deployment{s.deployment}, Runs: []core.Run{s.run}, PullRequestsSince: s.since}
+	if len(s.prs) > 0 {
+		f.PullRequests = map[string][]core.PullRequest{s.run.ID: s.prs}
+	}
+	return f, nil
 }
 func (s *testService) Deployment(context.Context, string) (core.Deployment, error) {
 	return s.deployment, nil
@@ -50,6 +58,13 @@ func (s *testService) RecentRuns(context.Context, string, int) ([]core.Run, erro
 	return s.recent, nil
 }
 func (s *testService) Events(context.Context, string) ([]core.Event, error) { return s.events, nil }
+func (s *testService) RunPullRequests(context.Context, string) ([]core.PullRequest, error) {
+	return s.prs, nil
+}
+func (s *testService) UnlinkedPullRequests(context.Context, string, string, int) ([]core.PullRequest, error) {
+	return s.prs, nil
+}
+func (s *testService) PullRequestsSince(context.Context) (time.Time, error) { return s.since, nil }
 
 func serve(service *testService, auth testAuth, method, path string, form url.Values) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()
@@ -219,7 +234,8 @@ func TestDashboardSeparatesEstimatesFromChargesAndMissingUsage(t *testing.T) {
 }
 
 func TestPagesEscapeUntrustedContent(t *testing.T) {
-	s := &testService{deployment: core.Deployment{ID: "agent", Name: "Example", Revision: 1}, run: core.Run{ID: "run", Deployment: core.Deployment{Name: "Example"}}, events: []core.Event{{Message: "<script>secret()</script>"}}}
+	s := &testService{deployment: core.Deployment{ID: "agent", Name: "Example", Revision: 1}, run: core.Run{ID: "run", Deployment: core.Deployment{Name: "Example"}}, events: []core.Event{{Message: "<script>secret()</script>"}},
+		prs: []core.PullRequest{{Number: 1, Title: "<script>secret()</script>", Author: "<script>", Link: "<script>", Reason: "<script>", Findings: []string{"<script>"}, Trailer: "<script>"}}}
 	for _, path := range []string{"/", "/agents", "/agents/agent", "/runs", "/runs/run"} {
 		w := serve(s, testAuth{"admin", true}, http.MethodGet, path, nil)
 		if w.Code != http.StatusOK {
@@ -420,5 +436,110 @@ func TestRunPageWithoutJobs(t *testing.T) {
 		if !strings.Contains(body, tc.want) {
 			t.Fatalf("want %s in %s", tc.want, body)
 		}
+	}
+}
+
+// openedPR is pull request 13 of acme/agent, linked to run-1 at the given level.
+func openedPR(link string) core.PullRequest {
+	p := core.PullRequest{ID: "42:13", Owner: "acme", Repository: "agent", Number: 13, Title: "Audit <fixes>", URL: "https://github.com/acme/agent/pull/13",
+		Author: "github-actions[bot]", AuthorType: "Bot", CreatedAt: time.Date(2026, 10, 15, 7, 8, 10, 0, time.UTC), Link: link, RunID: "run-1"}
+	switch link {
+	case core.LinkDeclared:
+		p.Trailer = "Agbredo-Run: 777/1"
+	case core.LinkInferred:
+		p.Findings = []string{core.FindingMissingTrailer}
+	}
+	return p
+}
+
+// The runs table says whether each run opened a pull request. "No PR" only
+// when the run has finished and Agbredo recorded pull requests for the whole
+// of it; otherwise the outcome is unavailable.
+func TestRunsTableShowsTheOutcome(t *testing.T) {
+	started := time.Date(2026, 10, 15, 7, 8, 0, 0, time.UTC)
+	before, after := started.Add(-time.Hour), started.Add(time.Hour)
+	for _, tc := range []struct {
+		name   string
+		status string
+		since  time.Time
+		prs    []core.PullRequest
+		want   string
+		absent string
+	}{
+		{"declared", "completed", before, []core.PullRequest{openedPR(core.LinkDeclared)}, `<a href="https://github.com/acme/agent/pull/13" target="_blank" rel="noopener noreferrer">Opened PR #13</a></div>`, "inferred"},
+		{"inferred", "running", before, []core.PullRequest{openedPR(core.LinkInferred)}, `Opened PR #13</a><small>inferred</small>`, "No PR"},
+		{"finished, no PR", "completed", before, nil, "<td>No PR</td>", "Opened PR"},
+		{"failed, no PR", "failed", started, nil, "<td>No PR</td>", "Opened PR"},
+		{"running", "running", before, nil, "<td>Unavailable</td>", "No PR"},
+		{"started before Agbredo recorded pull requests", "completed", after, nil, "<td>Unavailable</td>", "No PR"},
+		{"recording time unknown", "completed", time.Time{}, nil, "<td>Unavailable</td>", "No PR"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &testService{run: core.Run{ID: "run-1", Status: tc.status, GitHubStartedAt: started}, since: tc.since, prs: tc.prs}
+			for _, path := range []string{"/", "/runs"} {
+				body := serve(s, testAuth{"admin", true}, http.MethodGet, path, nil).Body.String()
+				if !strings.Contains(body, "<th>Outcome</th>") || !strings.Contains(body, tc.want) || strings.Contains(body, tc.absent) {
+					t.Fatalf("%s: want %s without %s in %s", path, tc.want, tc.absent, body)
+				}
+			}
+		})
+	}
+	// A run without GitHub's start time counts from when Agbredo recorded it.
+	s := &testService{run: core.Run{ID: "run-1", Status: "completed", CreatedAt: started}, since: before}
+	if body := serve(s, testAuth{"admin", true}, http.MethodGet, "/runs", nil).Body.String(); !strings.Contains(body, "<td>No PR</td>") {
+		t.Fatal(body)
+	}
+}
+
+func TestRunPageShowsPullRequests(t *testing.T) {
+	started := time.Date(2026, 10, 15, 7, 8, 0, 0, time.UTC)
+	s := &testService{run: core.Run{ID: "run-1", Status: "completed", GitHubStartedAt: started}, since: started.Add(-time.Hour),
+		prs: []core.PullRequest{openedPR(core.LinkDeclared), openedPR(core.LinkInferred)}}
+	body := serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String()
+	for _, want := range []string{"<h2>Pull requests</h2>", `<a href="https://github.com/acme/agent/pull/13" target="_blank" rel="noopener noreferrer">#13 ↗</a>`,
+		"Audit &lt;fixes&gt;", "github-actions[bot]<small>Bot</small>", "2026-10-15 07:08:10 UTC", `<span class="badge">declared</span><small class="mono">Agbredo-Run: 777/1</small>`,
+		`<span class="badge">inferred</span>`, `<span class="mono">missing_trailer</span>`, "<td>None</td>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("want %s in %s", want, body)
+		}
+	}
+	if strings.Contains(body, "merged") || strings.Contains(body, "closed") {
+		t.Fatal("shows the later state of a pull request", body)
+	}
+	for _, tc := range []struct {
+		status string
+		since  time.Time
+		want   string
+	}{
+		{"completed", started.Add(-time.Hour), "No pull request. GitHub reported none that Agbredo could link to this run."},
+		{"running", started.Add(-time.Hour), "None linked yet."},
+		{"completed", started.Add(time.Hour), "Unavailable. This run started before Agbredo began recording pull requests."},
+	} {
+		s := &testService{run: core.Run{ID: "run-1", Status: tc.status, GitHubStartedAt: started}, since: tc.since}
+		if body := serve(s, testAuth{"admin", true}, http.MethodGet, "/runs/run-1", nil).Body.String(); !strings.Contains(body, tc.want) {
+			t.Fatalf("want %s in %s", tc.want, body)
+		}
+	}
+}
+
+func TestDeploymentPageShowsUnlinkedPullRequests(t *testing.T) {
+	several := openedPR(core.LinkUnlinked)
+	several.RunID, several.Reason, several.CandidateRuns = "", core.ReasonSeveralRunsInWindow, []string{"run-a", "run-b"}
+	several.Findings = []string{core.FindingUnlinkedBotPR}
+	human := openedPR(core.LinkUnlinked)
+	human.Number, human.URL, human.Author, human.AuthorType, human.RunID = 14, "", "matt", "User", ""
+	human.Reason, human.Trailer, human.Findings = core.ReasonTrailerByHuman, "Agbredo-Run: 777/1", []string{core.FindingTrailerMismatch}
+	s := &testService{deployment: core.Deployment{ID: "agent-1", Owner: "acme", Repository: "agent"}, prs: []core.PullRequest{several, human}}
+	body := serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil).Body.String()
+	for _, want := range []string{"<h2>Unlinked pull requests in this repository</h2>", "several_runs_in_window", `<a href="/runs/run-a">Candidate run</a>`,
+		`<a href="/runs/run-b">Candidate run</a>`, `<span class="mono">unlinked_bot_pr</span>`, "<td>#14<small>acme/agent</small></td>", "matt<small>User</small>",
+		"trailer_by_human<small>Agbredo-Run: 777/1</small>", `<span class="mono">trailer_mismatch</span>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("want %s in %s", want, body)
+		}
+	}
+	s.prs = nil
+	if body = serve(s, testAuth{"admin", true}, http.MethodGet, "/agents/agent-1", nil).Body.String(); !strings.Contains(body, `<td colspan="6">None recorded.</td>`) {
+		t.Fatal(body)
 	}
 }

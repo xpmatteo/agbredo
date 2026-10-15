@@ -252,8 +252,12 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 		"github.installation_id": installation, "github.sender": payload.Sender.Login})
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
+	if event == "pull_request" && (d.Action == "opened" || d.Action == "edited") {
+		a.pullRequest(ctx, w, d, body)
+		return
+	}
 	if event != "workflow_run" {
-		a.Logger.Info("webhook received", "delivery", delivery, "event", logValue(event), "handled", false)
+		a.Logger.Info("webhook received", "delivery", delivery, "event", logValue(event), "action", logValue(d.Action), "handled", false)
 		if err = a.Service.RecordDelivery(ctx, d, core.DeliveryIgnored, nil); err != nil {
 			a.Logger.Error("webhook not indexed", "delivery", delivery, "error", core.Redact(err.Error()))
 			http.Error(w, "Webhook not indexed; see server logs", 500)
@@ -276,6 +280,30 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 	d.Repository = run.Repository // the same, checked by the parser
 	a.Logger.Info("webhook received", "delivery", delivery, "event", event, "handled", true, "repository", logValue(run.Repository), "github_run_id", run.ID, "run_attempt", run.Attempt, "status", logValue(run.Status))
 	if err = a.Service.Webhook(ctx, d, run); err != nil {
+		a.failure(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+// pullRequest records an opened or edited pull_request delivery. Other
+// actions (closed, reopened, ...) are ignored before this: Agbredo records
+// only the opening of a pull request.
+func (a *API) pullRequest(ctx context.Context, w http.ResponseWriter, d core.Delivery, body []byte) {
+	// The signed payload is trusted, but the event header is not signed: the
+	// payload must have the shape of a pull_request event.
+	pr, err := gh.ParsePullRequestEvent(body)
+	if err != nil {
+		a.Logger.Warn("webhook rejected", "reason", "invalid pull_request payload", "delivery", d.ID)
+		if err = a.Service.RecordDelivery(ctx, d, core.DeliveryFailed, gh.ErrBadPullRequest); err != nil {
+			a.Logger.Error("webhook not indexed", "delivery", d.ID, "error", core.Redact(err.Error()))
+		}
+		http.Error(w, "Invalid pull_request payload", 400)
+		return
+	}
+	d.Repository = pr.Repository // the same, read from the same payload
+	a.Logger.Info("webhook received", "delivery", d.ID, "event", d.Event, "action", d.Action, "handled", true, "repository", logValue(pr.Repository), "number", pr.Number)
+	if err = a.Service.PullRequestWebhook(ctx, d, pr); err != nil {
 		a.failure(w, err)
 		return
 	}

@@ -88,7 +88,13 @@ func (s *Service) Fleet(ctx context.Context) (Fleet, error) {
 	if err != nil {
 		return f, err
 	}
-	f.Runs, err = collect[Run](rows)
+	if f.Runs, err = collect[Run](rows); err != nil {
+		return f, err
+	}
+	if f.PullRequests, err = s.linkedPullRequests(ctx); err != nil {
+		return f, err
+	}
+	f.PullRequestsSince, err = s.PullRequestsSince(ctx)
 	return f, err
 }
 func collect[T any](rows pgx.Rows) ([]T, error) {

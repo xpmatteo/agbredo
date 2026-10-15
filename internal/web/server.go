@@ -28,6 +28,9 @@ type Service interface {
 	Run(context.Context, string) (core.Run, error)
 	RecentRuns(ctx context.Context, deploymentID string, limit int) ([]core.Run, error)
 	Events(context.Context, string) ([]core.Event, error)
+	RunPullRequests(ctx context.Context, runID string) ([]core.PullRequest, error)
+	UnlinkedPullRequests(ctx context.Context, owner, repository string, limit int) ([]core.PullRequest, error)
+	PullRequestsSince(context.Context) (time.Time, error)
 }
 
 type Auth interface {
@@ -43,18 +46,23 @@ type Server struct {
 }
 
 type page struct {
-	Title          string
-	User           string
-	CSRF           string
-	Fleet          core.Fleet
-	Deployment     core.Deployment
-	Run            core.Run
-	Events         []core.Event
-	Versions       []core.PipelineUse
-	RecentRuns     int
-	Active, Failed int
-	Spending       int64
-	Error          string
+	Title      string
+	User       string
+	CSRF       string
+	Fleet      core.Fleet
+	Deployment core.Deployment
+	Run        core.Run
+	Events     []core.Event
+	Versions   []core.PipelineUse
+	RecentRuns int
+	// PullRequests: those linked to the run on the run page, the unlinked
+	// ones of the repository on the deployment page.
+	PullRequests []core.PullRequest
+	// PullRequestsSince is when Agbredo started recording pull requests; zero if unknown.
+	PullRequestsSince time.Time
+	Active, Failed    int
+	Spending          int64
+	Error             string
 }
 
 func New(service Service, auth Auth) *Server {
@@ -80,6 +88,8 @@ func New(service Service, auth Auth) *Server {
 		},
 		"usageTokens": usageTokens,
 		"outcome":     outcome,
+		"noPR":        noPR,
+		"recordsPRs":  recordsPRs,
 		// jobsKnown says whether Agbredo has the run's jobs, even an empty list.
 		"jobsKnown":  func(r core.Run) bool { return r.Jobs != nil },
 		"jobsCapped": jobsCapped,
@@ -202,6 +212,10 @@ func (s *Server) deployments(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "agents", page{Title: "Deployments", Fleet: f, Deployment: core.Deployment{Enabled: true}})
 }
 
+// unlinkedPRs is how many of the newest unlinked pull requests of its
+// repository the deployment page shows.
+const unlinkedPRs = 20
+
 // recentRuns is how many of its newest runs the deployment page reads to show
 // which pipeline versions ran.
 const recentRuns = 20
@@ -217,7 +231,12 @@ func (s *Server) deployment(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "agent", page{Title: a.Name, Deployment: a, Versions: core.PipelineVersions(runs), RecentRuns: recentRuns})
+	prs, err := s.service.UnlinkedPullRequests(r.Context(), a.Owner, a.Repository, unlinkedPRs)
+	if err != nil {
+		s.failure(w, err)
+		return
+	}
+	s.render(w, r, "agent", page{Title: a.Name, Deployment: a, Versions: core.PipelineVersions(runs), RecentRuns: recentRuns, PullRequests: prs})
 }
 
 func (s *Server) saveDeployment(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +299,17 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, err)
 		return
 	}
-	s.render(w, r, "run", page{Title: run.Deployment.Name + " · Run", Run: run, Events: events})
+	prs, err := s.service.RunPullRequests(r.Context(), run.ID)
+	if err != nil {
+		s.failure(w, err)
+		return
+	}
+	since, err := s.service.PullRequestsSince(r.Context())
+	if err != nil {
+		s.failure(w, err)
+		return
+	}
+	s.render(w, r, "run", page{Title: run.Deployment.Name + " · Run", Run: run, Events: events, PullRequests: prs, PullRequestsSince: since})
 }
 
 // money is the one way to show an amount of money: dollars with two digits,
@@ -349,6 +378,23 @@ func outcome(status, conclusion string) string {
 	default:
 		return "Unavailable"
 	}
+}
+
+// recordsPRs says whether Agbredo was recording pull requests for the
+// whole of the run: the run started after Agbredo started recording them.
+func recordsPRs(r core.Run, since time.Time) bool {
+	start := r.GitHubStartedAt
+	if start.IsZero() {
+		start = r.CreatedAt
+	}
+	return !since.IsZero() && !start.IsZero() && !start.Before(since)
+}
+
+// noPR says whether Agbredo knows that a run with no linked pull request
+// opened none: the run has finished, and Agbredo was recording pull requests
+// for the whole of it. Otherwise the outcome is unknown, not "no PR".
+func noPR(r core.Run, since time.Time) bool {
+	return core.Terminal(r.Status) && recordsPRs(r, since)
 }
 
 // jobsCapped says whether the run's jobs or steps reached the limits on what

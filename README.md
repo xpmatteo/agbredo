@@ -38,7 +38,7 @@ The report route (`POST /api/agents/{id}/observations`) and its reporter (`integ
 
 ## Configure the GitHub App
 
-Create a GitHub App dedicated to Agbredo. Set its homepage to your public Agbredo URL, its user authorization callback to `https://YOUR-HOST/auth/callback`, and its webhook URL to `https://YOUR-HOST/api/github/webhook`. Set a random webhook secret and enable the **Workflow run** webhook event. Enable user authorization for dashboard login; device flow and user access-token expiration settings are not required by this implementation.
+Create a GitHub App dedicated to Agbredo. Set its homepage to your public Agbredo URL, its user authorization callback to `https://YOUR-HOST/auth/callback`, and its webhook URL to `https://YOUR-HOST/api/github/webhook`. Set a random webhook secret and enable the **Workflow run** and **Pull request** webhook events. Enable user authorization for dashboard login; device flow and user access-token expiration settings are not required by this implementation.
 
 Set **Where can this GitHub App be installed?** to **Only on this account**. This is required. Deployments are created by their first run, so the App installation is the only gate on which repositories can send telemetry to Agbredo. A public App could be installed by any GitHub user, who could then create deployments and send telemetry.
 
@@ -50,6 +50,7 @@ Request these repository permissions:
 | Contents | Read | Read workflow/repository information |
 | Issues | Read and write | Not used today; kept in case Agbredo writes to GitHub again |
 | Metadata | Read | Required GitHub App repository metadata access |
+| Pull requests | Read | Receive `pull_request` webhooks, to record the pull requests that agents open |
 
 No organization or account permissions are needed. Install the App on only the intended agent repositories: a repository with the App installed can send telemetry to Agbredo, and the first run of each of its workflows that asks for a token creates a deployment. Agbredo asks GitHub for the installation itself, as the App, when a deployment is created; runners never send it.
 

@@ -13,7 +13,7 @@ The words we use for the domain. Code, database and dashboard should use the sam
 | Agent | A named role inside a pipeline, e.g. `triage` or `reviewer`. A step in the pipeline's YAML starts it. | Not in code. |
 | Agent run | One execution of an agent inside a run: one Claude Code invocation. A run has zero or more agent runs. | `Run.AgentRuns`, `AgentRunUsage`. The wire names stay "source" and "sources": the `source` input, the `source` and `sources` JSON keys, `run_tokens.source`, the `agbredo.source` label. |
 | Observation | Anything that arrives about a run: telemetry, GitHub webhooks and polls. | No single type. Telemetry adds to `Run` totals and `Run.AgentRuns`. Webhooks and polls set `Run.Status` and add a `core.Event`. |
-| Event | One entry in a run's history. Today, a GitHub status change of the run. | `core.Event`, `events` table. Older rows of type `claude.execution` came from the former reporter. |
+| Event | One entry in a run's history: a GitHub status change of the run, or a pull request the run opened. | `core.Event`, `events` table: type `github.workflow_run` or `github.pull_request`. Older rows of type `claude.execution` came from the former reporter. |
 
 ## More terms
 
@@ -23,7 +23,9 @@ The words we use for the domain. Code, database and dashboard should use the sam
 | Configuration | What a run ran with: trigger event, ref, threshold at the time, and the Claude Code version, model and effort. | Trigger event (`Run.TriggerEvent`) and ref (`Run.Ref`) come from the OIDC identity at the run's first telemetry token, and the threshold from the deployment when the run is created. A run that asked for no token has no ref, and its trigger event comes from the webhook. GitHub's head branch and commit are kept apart (`Run.HeadBranch`, `Run.HeadSHA`); the head branch is not a ref. Claude Code version, models (`AgentRunUsage.Models`, with tokens per model) and effort levels (`AgentRunUsage.Efforts`) are kept per agent run, from telemetry. Each is missing when nothing reported it. |
 | Threshold | Estimated cost per run above which a run is flagged. It does not stop anything. | `ThresholdMicros`, `OverThreshold`. |
 | Estimated cost | Cost of the tokens at API prices. Not the subscription charge. | `CostMicros`. |
-| Escalation | An agent run hands work to a person, usually by opening a GitHub issue or PR. | Not in code. |
+| Escalation | An agent run hands work to a person, usually by opening a GitHub issue or PR. | Pull requests only: `core.PullRequest`, `pull_requests` table, from `pull_request` webhooks. Only the opening is recorded, linked to a run (not to an agent run). Issues are not recorded. |
+| Link (of a pull request) | How sure Agbredo is of the run that opened a pull request. `declared`: the body names the run in its `Agbredo-Run:` trailer, and the facts agree. `inferred`: no trailer, and only one run of the repository was running when it was opened. `unlinked`: no run, with a reason. | `PullRequest.Link`, `pull_requests.link`; `core.LinkPullRequest`. |
+| Finding | A rule break seen on a pull request: `missing_trailer`, `trailer_mismatch`, `unlinked_bot_pr`. Recorded, not dropped. | `PullRequest.Findings`. |
 | Central repository | A repository that holds pipelines. | Not in code, beyond the start of `Pipeline.Path`. |
 | Caller workflow | The small workflow file in the target repository. It holds the triggers and permissions and calls one pipeline. | The workflow file of a `core.Deployment`. |
 | Telemetry | Claude Code's own OpenTelemetry export, sent to Agbredo with a telemetry token, one per agent run. | `run_tokens`, `otlp_*` tables. |

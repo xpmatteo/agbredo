@@ -226,4 +226,9 @@ type Backend interface {
 type Fleet struct {
 	Deployments []Deployment
 	Runs        []Run
+	// PullRequests are the pull requests linked to each run, by run ID.
+	PullRequests map[string][]PullRequest
+	// PullRequestsSince is when Agbredo started recording pull requests;
+	// zero if unknown. See Service.PullRequestsSince.
+	PullRequestsSince time.Time
 }
