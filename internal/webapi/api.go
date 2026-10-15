@@ -207,24 +207,24 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		a.Logger.Warn("webhook rejected", "reason", "body too large")
 		http.Error(w, "Webhook exceeds 1 MiB", 413)
 		return
 	}
+	delivery := r.Header.Get("X-GitHub-Delivery")
+	event := r.Header.Get("X-GitHub-Event")
 	if !gh.VerifyWebhook(a.WebhookSecret, body, r.Header.Get("X-Hub-Signature-256")) {
+		a.Logger.Warn("webhook rejected", "reason", "invalid signature", "delivery", logValue(delivery), "event", logValue(event))
 		http.Error(w, "Invalid GitHub webhook signature", 401)
 		return
 	}
-	delivery := r.Header.Get("X-GitHub-Delivery")
 	if delivery == "" || len(delivery) > 160 {
+		a.Logger.Warn("webhook rejected", "reason", "missing or long delivery ID", "event", logValue(event))
 		http.Error(w, "GitHub delivery ID is required", 400)
 		return
 	}
-	event := r.Header.Get("X-GitHub-Event")
-	if event == "ping" {
-		w.WriteHeader(204)
-		return
-	}
 	if event != "workflow_run" {
+		a.Logger.Info("webhook received", "delivery", delivery, "event", logValue(event), "handled", false)
 		w.WriteHeader(204)
 		return
 	}
@@ -237,9 +237,11 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 		} `json:"workflow_run"`
 	}
 	if json.Unmarshal(body, &payload) != nil || payload.WorkflowRun.ID <= 0 {
+		a.Logger.Warn("webhook rejected", "reason", "invalid workflow_run payload", "delivery", delivery)
 		http.Error(w, "Invalid workflow_run payload", 400)
 		return
 	}
+	a.Logger.Info("webhook received", "delivery", delivery, "event", event, "handled", true, "repository", logValue(payload.Repository.FullName), "github_run_id", payload.WorkflowRun.ID)
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
 	if err = a.Service.Webhook(ctx, delivery, payload.Repository.FullName, payload.WorkflowRun.ID); err != nil {
@@ -247,4 +249,12 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(204)
+}
+
+// logValue shortens a header or field that a caller controls before it is logged.
+func logValue(v string) string {
+	if len(v) > 100 {
+		return v[:100] + "..."
+	}
+	return v
 }
