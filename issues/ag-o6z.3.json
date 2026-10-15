@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Matteo Vaccari",
   "blocked_by": [
     "ag-o6z.2"
   ],
@@ -12,8 +12,8 @@
   "labels": [],
   "parent": "ag-o6z",
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Record the jobs and steps of each run when it completes",
   "type": "task",
-  "updated_at": "2026-10-15T08:59:00Z"
+  "updated_at": "2026-10-15T10:55:47Z"
 }
