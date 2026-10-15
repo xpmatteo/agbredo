@@ -7,9 +7,15 @@
   "id": "ag-o6z.6",
   "labels": [],
   "parent": "ag-o6z",
+  "comments": [
+    {
+      "text": "Merged to pipelines main as 5e8621d, pushed, v1 tag moved to it (Matt approved). Review: no bugs; nit 'tail -c1 guard is dead code' kept as harmless defence.",
+      "timestamp": "2026-10-15T09:19:22Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Pipelines: add the Agbredo-Run trailer to audit PRs",
   "type": "task",
-  "updated_at": "2026-10-15T09:17:52Z"
+  "updated_at": "2026-10-15T09:19:22Z"
 }
