@@ -27,11 +27,15 @@
     {
       "text": "Second review fixes in commit c9961f4: action_required runs get Run.AwaitingApproval (JSON awaiting_approval, omitempty), recomputed on every webhook/poll state (queued \u0026\u0026 action_required). Reconcile skips them (document-\u003e\u003e'awaiting_approval' IS DISTINCT FROM 'true'); approval webhook clears it and polling resumes. Chose a run field over an events-table subquery so the poll and the dashboard share one rule; dashboard leaves them out of Active and labels them 'Waiting for approval'. Fork guard: no pipeline for any event starting with pull_request except pull_request_target. Tests: approval run not polled then followed after approval; pull_request_review/_comment no pipeline, pull_request_target keeps it; web label and Active count. Docs updated. make test passes.",
       "timestamp": "2026-10-15T10:50:58Z"
+    },
+    {
+      "text": "Matt approved the token rule change on 2026-10-15: lockRun skips the live+enabled check only when the run already has a run_tokens row. Merged to local main (c9961f4) after two review rounds.",
+      "timestamp": "2026-10-15T10:53:49Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Record every run of a live deployment from workflow_run webhooks, with or without telemetry",
   "type": "task",
-  "updated_at": "2026-10-15T10:50:58Z"
+  "updated_at": "2026-10-15T10:53:49Z"
 }
