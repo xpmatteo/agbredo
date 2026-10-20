@@ -16,15 +16,18 @@ My (Matt's) personal goals is to learn how build such a dashboard, so that I can
 
  - Language: Go with server-rendered HTML
  - Persistence: PostgreSQL
- - Claude Code Telemetry saved to OpenObserve
+ - Claude Code Telemetry saved to OpenObserve, authenticated with a OpenObserve token stored as a GH secret
+ - Agbredo receives information from GH webhooks
+ - Agbredo can query OpenObserve
  - Deployment: to Railway
  - The agents use Claude Code with my Pro subscription
  - The usage cost is the estimated API cost returned by the Claude telemetry
  - The public URL is https://www.agbredo.com
+ - The dashboard is protected through GH authentication
+ - An environment variable AGBREDO_USERS lists the GH login names who are allowed to see the dashboard
  - The integration with GH is through the Agbredo GH app
- - Agbredo receives information from two sources: GH webhooks, and Claude Code telemetry
  - The transcript of a Claude session is saved as an artifact in the GH workflow run
- - How do we link telemetry to a run, and how do we authenticate it? The workflow sets OTEL_RESOURCE_ATTRIBUTES with GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT and the job name.
+ - How do we link telemetry to a run, and how do we authenticate it? The workflow sets OTEL_RESOURCE_ATTRIBUTES with GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT, step id and the job name.
 
 ## The first slice
 
@@ -43,6 +46,5 @@ I plan to reuse the Railway deployment.  I will nuke the DB.  I will reuse the e
 
 - How do we link a PR or Issue to a Run? 
 
-- "Step: a step of job of a GitHub action". GitHub has workflow → job → step, and with reusable workflows the steps live in the pipeline repo. Is an Agent Step always a GitHub step, or could it be a whole job? => yes it could be
 - Deployment is now "Repository + Pipeline ID". The old one was "repository + caller workflow file". Can one repo use the same pipeline from two caller workflows? If so, those two become one Deployment.
 - Version: "readable identifiers, eg v2". What do we show when a run uses a branch or a SHA?
