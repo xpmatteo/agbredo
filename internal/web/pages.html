@@ -1,0 +1,80 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.}} - Agbredo</title>
+<style>
+body { font: 14px/1.4 system-ui, sans-serif; margin: 1rem; color: #222; }
+header { display: flex; justify-content: space-between; align-items: center; }
+header a { color: inherit; text-decoration: none; font-weight: bold; font-size: 1.2rem; }
+table { border-collapse: collapse; margin-top: 1rem; }
+th, td { text-align: left; padding: .3rem .6rem; border-bottom: 1px solid #ddd; vertical-align: top; }
+th { background: #f4f4f4; }
+dl { display: grid; grid-template-columns: max-content auto; gap: .2rem 1rem; }
+dt { font-weight: bold; }
+dd { margin: 0; }
+.success { color: #1a7f37; }
+.failure, .cancelled, .timed_out { color: #cf222e; }
+</style>
+</head>
+<body>
+<header>
+<a href="/">Agbredo</a>
+<form method="post" action="/auth/logout"><button>Log out</button></form>
+</header>
+<main>
+{{end}}
+
+{{define "foot"}}</main>
+</body>
+</html>
+{{end}}
+
+{{define "pipelines"}}{{range .}}<div>{{.ID}}@{{.Version}}</div>{{end}}{{end}}
+
+{{define "runs"}}{{template "head" "Runs"}}
+<h1>Runs</h1>
+{{if .}}
+<table>
+<tr><th>Repository</th><th>Pipeline@Version</th><th>Run</th><th>Status</th><th>Started</th><th>Updated</th><th></th></tr>
+{{range .}}
+<tr>
+<td>{{.Repository}}</td>
+<td>{{template "pipelines" .Pipelines}}</td>
+<td><a href="/runs/{{.RunID}}/{{.RunAttempt}}">{{.RunID}}/{{.RunAttempt}}</a></td>
+<td class="{{.State}}">{{.State}}</td>
+<td>{{time .RunStartedAt}}</td>
+<td>{{time .UpdatedAt}}</td>
+<td><a href="{{.HTMLURL}}">GitHub</a></td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p>No runs yet.</p>
+{{end}}
+{{template "foot"}}{{end}}
+
+{{define "run"}}{{template "head" "Run"}}
+{{with .Run}}
+<h1>Run {{.RunID}}/{{.RunAttempt}}</h1>
+<dl>
+<dt>Repository</dt><dd>{{.Repository}}</dd>
+<dt>Workflow</dt><dd>{{.WorkflowName}}</dd>
+<dt>Pipeline@Version</dt><dd>{{template "pipelines" .Pipelines}}</dd>
+<dt>Status</dt><dd class="{{.State}}">{{.State}}</dd>
+<dt>Branch</dt><dd>{{.HeadBranch}}</dd>
+<dt>Trigger</dt><dd>{{.EventName}}</dd>
+<dt>Actor</dt><dd>{{.Actor}}</dd>
+<dt>Started</dt><dd>{{time .RunStartedAt}}</dd>
+<dt>GitHub</dt><dd><a href="{{.HTMLURL}}">{{.HTMLURL}}</a></dd>
+</dl>
+{{end}}
+<h2>Events</h2>
+<table>
+<tr><th>Updated</th><th>Received</th><th>Action</th><th>Status</th><th>Conclusion</th></tr>
+{{range .Events}}
+<tr><td>{{time .UpdatedAt}}</td><td>{{time .ReceivedAt}}</td><td>{{.Action}}</td><td>{{.Status}}</td><td>{{.Conclusion}}</td></tr>
+{{end}}
+</table>
+{{template "foot"}}{{end}}

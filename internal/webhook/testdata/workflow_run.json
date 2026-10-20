@@ -1,0 +1,118 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 38696780798,
+    "name": "Agent instructions audit",
+    "node_id": "WFR_kwLOOk3x8M8AAAAJAoWk_g",
+    "head_branch": "main",
+    "head_sha": "4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a",
+    "path": ".github/workflows/agent-audit.yml",
+    "display_title": "Agent instructions audit",
+    "run_number": 12,
+    "event": "schedule",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow_id": 197403311,
+    "check_suite_id": 45123456789,
+    "check_suite_node_id": "CS_kwDOOk3x8M8AAAAKgfJ9FQ",
+    "url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/runs/38696780798",
+    "html_url": "https://github.com/xpmatteo/rpg-interpreter/actions/runs/38696780798",
+    "pull_requests": [],
+    "created_at": "2026-10-15T07:08:00Z",
+    "updated_at": "2026-10-15T07:09:17Z",
+    "actor": {
+      "login": "xpmatteo",
+      "id": 1234567,
+      "node_id": "MDQ6VXNlcjEyMzQ1Njc=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1234567?v=4",
+      "html_url": "https://github.com/xpmatteo",
+      "type": "User",
+      "site_admin": false
+    },
+    "run_attempt": 2,
+    "referenced_workflows": [
+      {
+        "path": "xpmatteo/agbredo-pipelines/.github/workflows/audit.yml@v1",
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "ref": "refs/tags/v1"
+      },
+      {
+        "path": "xpmatteo/agbredo-pipelines/.github/workflows/open-pr.yml@89abcdef0123456789abcdef0123456789abcdef",
+        "sha": "89abcdef0123456789abcdef0123456789abcdef"
+      }
+    ],
+    "run_started_at": "2026-10-15T07:08:40Z",
+    "triggering_actor": {
+      "login": "xpmatteo",
+      "id": 1234567,
+      "type": "User",
+      "site_admin": false
+    },
+    "jobs_url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/runs/38696780798/jobs",
+    "logs_url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/runs/38696780798/logs",
+    "check_suite_url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/check-suites/45123456789",
+    "artifacts_url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/runs/38696780798/artifacts",
+    "cancel_url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/runs/38696780798/cancel",
+    "rerun_url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/runs/38696780798/rerun",
+    "previous_attempt_url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/runs/38696780798/attempts/1",
+    "workflow_url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/workflows/197403311",
+    "head_commit": {
+      "id": "4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a",
+      "tree_id": "aa5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a",
+      "message": "Update README",
+      "timestamp": "2026-10-14T18:22:01Z",
+      "author": {"name": "Matteo Vaccari", "email": "matteo@example.com"},
+      "committer": {"name": "GitHub", "email": "noreply@github.com"}
+    },
+    "repository": {
+      "id": 987654321,
+      "node_id": "R_kgDOOk3x8A",
+      "name": "rpg-interpreter",
+      "full_name": "xpmatteo/rpg-interpreter",
+      "private": false,
+      "owner": {"login": "xpmatteo", "id": 1234567, "type": "User"},
+      "html_url": "https://github.com/xpmatteo/rpg-interpreter"
+    },
+    "head_repository": {
+      "id": 987654321,
+      "node_id": "R_kgDOOk3x8A",
+      "name": "rpg-interpreter",
+      "full_name": "xpmatteo/rpg-interpreter",
+      "private": false,
+      "owner": {"login": "xpmatteo", "id": 1234567, "type": "User"},
+      "html_url": "https://github.com/xpmatteo/rpg-interpreter"
+    }
+  },
+  "workflow": {
+    "id": 197403311,
+    "node_id": "W_kwDOOk3x8M4LxDhv",
+    "name": "Agent instructions audit",
+    "path": ".github/workflows/agent-audit.yml",
+    "state": "active",
+    "created_at": "2026-10-10T10:00:00.000Z",
+    "updated_at": "2026-10-10T10:00:00.000Z",
+    "url": "https://api.github.com/repos/xpmatteo/rpg-interpreter/actions/workflows/197403311",
+    "html_url": "https://github.com/xpmatteo/rpg-interpreter/blob/main/.github/workflows/agent-audit.yml",
+    "badge_url": "https://github.com/xpmatteo/rpg-interpreter/workflows/Agent%20instructions%20audit/badge.svg"
+  },
+  "repository": {
+    "id": 987654321,
+    "node_id": "R_kgDOOk3x8A",
+    "name": "rpg-interpreter",
+    "full_name": "xpmatteo/rpg-interpreter",
+    "private": false,
+    "owner": {"login": "xpmatteo", "id": 1234567, "type": "User"},
+    "html_url": "https://github.com/xpmatteo/rpg-interpreter",
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "xpmatteo",
+    "id": 1234567,
+    "type": "User",
+    "site_admin": false
+  },
+  "installation": {
+    "id": 42424242,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNDI0MjQyNDI="
+  }
+}
