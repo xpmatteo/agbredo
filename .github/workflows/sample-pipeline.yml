@@ -1,6 +1,7 @@
 # Sample Pipeline, for testing Agbredo.
 # The Agent writes content (a haiku file, issue and PR text).
-# Deterministic Steps open the Issue and the PR and add the Agbredo-Run marker.
+# Deterministic Steps open the Issue and the PR, add the Agbredo-Run marker
+# and the ai-agent-generated label.
 #
 # This is a reusable workflow, started by sample.yml. Agbredo only shows runs
 # whose workflow_run webhook has a non-empty referenced_workflows, and GitHub
@@ -26,6 +27,7 @@ jobs:
       OUT: agbredo-out
       HAIKU: samples/haiku-${{ github.run_id }}-${{ github.run_attempt }}.md
       MARKER: "Agbredo-Run: ${{ github.run_id }}/${{ github.run_attempt }}"
+      LABEL: ai-agent-generated
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -44,12 +46,17 @@ jobs:
             Do not do anything else.
           claude_args: --model claude-haiku-5-5 --allowedTools Write --max-turns 10
 
+      - name: Make sure the label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh label create "$LABEL" --color BFD4F2 --description "Written by an AI agent, opened by automation" --force
+
       - name: Open the Issue
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           printf '\n\n%s\n' "$MARKER" >> "$OUT/issue-body.md"
-          gh issue create --title "$(head -n 1 "$OUT/issue-title.txt")" --body-file "$OUT/issue-body.md"
+          gh issue create --label "$LABEL" --title "$(head -n 1 "$OUT/issue-title.txt")" --body-file "$OUT/issue-body.md"
 
       - name: Open the PR
         env:
@@ -63,4 +70,4 @@ jobs:
           git add "$HAIKU"
           git commit -m "Add a haiku"
           git push origin "$BRANCH"
-          gh pr create --head "$BRANCH" --title "$(head -n 1 "$OUT/pr-title.txt")" --body-file "$OUT/pr-body.md"
+          gh pr create --head "$BRANCH" --label "$LABEL" --title "$(head -n 1 "$OUT/pr-title.txt")" --body-file "$OUT/pr-body.md"
