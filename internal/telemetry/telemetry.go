@@ -4,6 +4,10 @@
 // A run proves who it is with a GitHub OIDC token. We accept it when the job
 // runs a Pipeline from one of the trusted repositories. We do not read the
 // OTLP body, so the run attributes in it are what the workflow says.
+//
+// The workflow gets the token once, before the Agent starts, because
+// claude-code-action hides the OIDC variables from Claude. The token expires
+// in minutes, so we accept it for as long as a job can run.
 package telemetry
 
 import (
@@ -12,6 +16,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -20,6 +25,8 @@ const (
 	Issuer   = "https://token.actions.githubusercontent.com"
 	JWKSURL  = Issuer + "/.well-known/jwks"
 	Audience = "agbredo"
+	// MaxJob is the longest a job can run on a GitHub-hosted runner.
+	MaxJob = 6 * time.Hour
 )
 
 type claims struct {
@@ -77,7 +84,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) verify(raw string) (string, error) {
 	c := &claims{}
 	_, err := jwt.ParseWithClaims(raw, c, h.Keyfunc, jwt.WithValidMethods([]string{"RS256"}),
-		jwt.WithIssuer(Issuer), jwt.WithAudience(Audience), jwt.WithExpirationRequired())
+		jwt.WithIssuer(Issuer), jwt.WithAudience(Audience), jwt.WithExpirationRequired(), jwt.WithLeeway(MaxJob))
 	return c.JobWorkflowRef, err
 }
 

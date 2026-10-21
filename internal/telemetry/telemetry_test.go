@@ -73,6 +73,17 @@ func TestForwardsTelemetryOfATrustedPipeline(t *testing.T) {
 	}
 }
 
+func TestAcceptsTokensThatExpiredDuringTheJob(t *testing.T) {
+	h, got := setup(t)
+	expired := token(t, func(c jwt.MapClaims) { c["exp"] = time.Now().Add(-MaxJob + time.Minute).Unix() })
+	if w := post(h, "Bearer "+expired); w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+	if len(*got) != 1 {
+		t.Fatalf("forwarded %+v", *got)
+	}
+}
+
 func TestRejectsBadTokens(t *testing.T) {
 	other, _ := rsa.GenerateKey(rand.Reader, 2048)
 	signedByOther, _ := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
@@ -81,14 +92,14 @@ func TestRejectsBadTokens(t *testing.T) {
 	}).SignedString(other)
 	h, got := setup(t)
 	for name, authorization := range map[string]string{
-		"missing":         "",
-		"not a token":     "Bearer nonsense",
-		"other key":       "Bearer " + signedByOther,
-		"expired":         "Bearer " + token(t, func(c jwt.MapClaims) { c["exp"] = time.Now().Add(-time.Minute).Unix() }),
-		"no expiry":       "Bearer " + token(t, func(c jwt.MapClaims) { delete(c, "exp") }),
-		"other issuer":    "Bearer " + token(t, func(c jwt.MapClaims) { c["iss"] = "https://example.com" }),
-		"other audience":  "Bearer " + token(t, func(c jwt.MapClaims) { c["aud"] = "sts.amazonaws.com" }),
-		"without Bearer ": "Basic " + token(t, nil),
+		"missing":          "",
+		"not a token":      "Bearer nonsense",
+		"other key":        "Bearer " + signedByOther,
+		"expired long ago": "Bearer " + token(t, func(c jwt.MapClaims) { c["exp"] = time.Now().Add(-MaxJob - time.Minute).Unix() }),
+		"no expiry":        "Bearer " + token(t, func(c jwt.MapClaims) { delete(c, "exp") }),
+		"other issuer":     "Bearer " + token(t, func(c jwt.MapClaims) { c["iss"] = "https://example.com" }),
+		"other audience":   "Bearer " + token(t, func(c jwt.MapClaims) { c["aud"] = "sts.amazonaws.com" }),
+		"without Bearer ":  "Basic " + token(t, nil),
 	} {
 		if w := post(h, authorization); w.Code != http.StatusUnauthorized {
 			t.Errorf("%s: status %d", name, w.Code)

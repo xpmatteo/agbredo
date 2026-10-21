@@ -16,7 +16,7 @@ My (Matt's) personal goals is to learn how build such a dashboard, so that I can
 
  - Language: Go with server-rendered HTML
  - Persistence: PostgreSQL
- - Claude Code Telemetry saved to OpenObserve. Claude Code sends OTLP to Agbredo at `/api/otlp/v1/...`, with a GitHub OIDC token (audience `agbredo`) as Bearer token. Agbredo checks the token and that its `job_workflow_ref` is a Pipeline in one of the repos in `AGBREDO_PIPELINE_REPOS`, then forwards the body unchanged to OpenObserve with the one OpenObserve token it keeps. So the repos that use a Pipeline need no telemetry secret. Agbredo does not read the OTLP body.
+ - Claude Code Telemetry saved to OpenObserve. Claude Code sends OTLP to Agbredo at `/api/otlp/v1/...`, with a GitHub OIDC token (audience `agbredo`) as Bearer token. A Pipeline step gets the token before the Agent starts, because claude-code-action hides the OIDC variables from Claude; Agbredo accepts it up to 6 hours after it expires, the longest a job can run. Agbredo checks the token and that its `job_workflow_ref` is a Pipeline in one of the repos in `AGBREDO_PIPELINE_REPOS`, then forwards the body unchanged to OpenObserve with the one OpenObserve token it keeps. So the repos that use a Pipeline need no telemetry secret. Agbredo does not read the OTLP body.
  - Agbredo receives information from GH webhooks
  - Agbredo can query OpenObserve
  - Deployment: to Railway
