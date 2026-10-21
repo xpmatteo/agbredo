@@ -1,5 +1,6 @@
-// Package webhook receives GitHub workflow_run webhooks and stores the
-// ones of Pipeline runs.
+// Package webhook receives GitHub webhooks. It stores the workflow_run
+// webhooks of Pipeline runs, and the PRs and Issues opened by a Run, which
+// we know from the Agbredo-Run marker on the last line of their body.
 package webhook
 
 import (
@@ -11,6 +12,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 
 type Inserter interface {
 	InsertEvent(ctx context.Context, e store.Event) error
+	InsertOpened(ctx context.Context, o store.Opened) error
 }
 
 type Handler struct {
@@ -41,10 +45,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad signature", http.StatusUnauthorized)
 		return
 	}
-	if r.Header.Get("X-GitHub-Event") != "workflow_run" {
+	switch r.Header.Get("X-GitHub-Event") {
+	case "workflow_run":
+		h.workflowRun(w, r, body)
+	case "pull_request", "issues":
+		h.opened(w, r, body)
+	default:
 		w.WriteHeader(http.StatusNoContent)
-		return
 	}
+}
+
+func (h *Handler) workflowRun(w http.ResponseWriter, r *http.Request, body []byte) {
 	e, err := Parse(r.Header.Get("X-GitHub-Delivery"), body)
 	if err != nil {
 		log.Printf("reject webhook %s: bad workflow_run payload: %v", r.Header.Get("X-GitHub-Delivery"), err)
@@ -107,4 +118,66 @@ func Parse(deliveryID string, body []byte) (store.Event, error) {
 		e.Pipelines = append(e.Pipelines, store.Pipeline{ID: id, Version: version})
 	}
 	return e, nil
+}
+
+func (h *Handler) opened(w http.ResponseWriter, r *http.Request, body []byte) {
+	o, ok, err := ParseOpened(r.Header.Get("X-GitHub-Delivery"), r.Header.Get("X-GitHub-Event"), body)
+	if err != nil {
+		log.Printf("reject webhook %s: bad %s payload: %v", o.DeliveryID, r.Header.Get("X-GitHub-Event"), err)
+		http.Error(w, "bad payload", http.StatusBadRequest)
+		return
+	}
+	if !ok {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err := h.Store.InsertOpened(r.Context(), o); err != nil {
+		log.Printf("store webhook %s: %v", o.DeliveryID, err)
+		http.Error(w, "cannot store event", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+var marker = regexp.MustCompile(`^Agbredo-Run: (\d+)/(\d+)$`)
+
+// ParseOpened reads a pull_request or issues payload. It is ok only when the
+// action is "opened" and the last line of the body is an Agbredo-Run marker.
+func ParseOpened(deliveryID, event string, body []byte) (store.Opened, bool, error) {
+	type item struct {
+		Number    int       `json:"number"`
+		Title     string    `json:"title"`
+		HTMLURL   string    `json:"html_url"`
+		Body      string    `json:"body"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	var p struct {
+		Action      string `json:"action"`
+		PullRequest item   `json:"pull_request"`
+		Issue       item   `json:"issue"`
+		Repository  struct {
+			FullName string `json:"full_name"`
+		} `json:"repository"`
+	}
+	o := store.Opened{DeliveryID: deliveryID}
+	if err := json.Unmarshal(body, &p); err != nil {
+		return o, false, err
+	}
+	it, kind := p.Issue, "issue"
+	if event == "pull_request" {
+		it, kind = p.PullRequest, "pull_request"
+	}
+	text := strings.TrimSpace(it.Body)
+	m := marker.FindStringSubmatch(strings.TrimSpace(text[strings.LastIndex(text, "\n")+1:]))
+	if p.Action != "opened" || m == nil {
+		return o, false, nil
+	}
+	runID, err1 := strconv.ParseInt(m[1], 10, 64)
+	attempt, err2 := strconv.Atoi(m[2])
+	if err1 != nil || err2 != nil {
+		return o, false, nil
+	}
+	o.Repository, o.Kind, o.Number, o.Title, o.HTMLURL, o.OpenedAt = p.Repository.FullName, kind, it.Number, it.Title, it.HTMLURL, it.CreatedAt
+	o.RunID, o.RunAttempt = runID, attempt
+	return o, true, nil
 }

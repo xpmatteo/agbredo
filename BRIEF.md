@@ -18,7 +18,8 @@ My (Matt's) personal goals is to learn how build such a dashboard, so that I can
  - Persistence: PostgreSQL
  - Claude Code Telemetry saved to OpenObserve. Claude Code sends OTLP to Agbredo at `/api/otlp/v1/...`, with a GitHub OIDC token (audience `agbredo`) as Bearer token. A Pipeline step gets the token before the Agent starts, because claude-code-action hides the OIDC variables from Claude; Agbredo accepts it up to 6 hours after it expires, the longest a job can run. Agbredo checks the token and that its `job_workflow_ref` is a Pipeline in one of the repos in `AGBREDO_PIPELINE_REPOS`, then forwards the body unchanged to OpenObserve with the one OpenObserve token it keeps. So the repos that use a Pipeline need no telemetry secret. Agbredo does not read the OTLP body.
  - Agbredo receives information from GH webhooks
- - Agbredo can query OpenObserve
+ - Agbredo can query OpenObserve. The dashboard asks it which Agents ran in a Run: the distinct `github_step` values in the Run's Claude Code log events (stream `default`), with a separate search credential. Each Agent step sets its own `github.step` in `OTEL_RESOURCE_ATTRIBUTES`. If OpenObserve fails, the pages still show the rest.
+ - The PRs and Issues a Run opened come from the `pull_request` and `issues` webhooks (action `opened`) with the `Agbredo-Run:` marker. The GH App must subscribe to those events.
  - Deployment: to Railway
  - The agents use Claude Code with my Pro subscription
  - The usage cost is the estimated API cost returned by the Claude telemetry

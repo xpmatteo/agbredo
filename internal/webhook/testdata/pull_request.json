@@ -1,0 +1,26 @@
+{
+  "action": "opened",
+  "number": 12,
+  "pull_request": {
+    "url": "https://api.github.com/repos/xpmatteo/agbredo/pulls/12",
+    "id": 2876543210,
+    "html_url": "https://github.com/xpmatteo/agbredo/pull/12",
+    "number": 12,
+    "state": "open",
+    "title": "Add a haiku about robots at work",
+    "user": { "login": "github-actions[bot]", "type": "Bot" },
+    "body": "Adds a haiku about watching robots work.\r\n\r\nAgbredo-Run: 18765432101/1\r\n",
+    "created_at": "2026-10-21T06:50:12Z",
+    "updated_at": "2026-10-21T06:50:12Z",
+    "labels": [{ "name": "ai-agent-generated" }],
+    "head": { "ref": "sample-pipeline/18765432101-1" },
+    "base": { "ref": "main" }
+  },
+  "repository": {
+    "id": 1050000000,
+    "name": "agbredo",
+    "full_name": "xpmatteo/agbredo",
+    "html_url": "https://github.com/xpmatteo/agbredo"
+  },
+  "sender": { "login": "github-actions[bot]", "type": "Bot" }
+}

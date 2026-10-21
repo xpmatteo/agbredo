@@ -33,12 +33,18 @@ dd { margin: 0; }
 
 {{define "pipelines"}}{{range .}}<div>{{.ID}}@{{.Version}}</div>{{end}}{{end}}
 
+{{define "link"}}<a href="{{.HTMLURL}}">{{if eq .Kind "pull_request"}}PR{{else}}Issue{{end}} #{{.Number}}</a>{{end}}
+{{define "opened"}}{{range .}}<div>{{template "link" .}}</div>{{end}}{{end}}
+
+{{define "unavailable"}}<p class="failure">Cannot get the Agents from OpenObserve.</p>{{end}}
+
 {{define "runs"}}{{template "head" "Runs"}}
 <h1>Runs</h1>
-{{if .}}
+{{if not .AgentsOK}}{{template "unavailable"}}{{end}}
+{{if .Runs}}
 <table>
-<tr><th>Repository</th><th>Pipeline@Version</th><th>Run</th><th>Status</th><th>Started</th><th>Updated</th><th></th></tr>
-{{range .}}
+<tr><th>Repository</th><th>Pipeline@Version</th><th>Run</th><th>Status</th><th>Started</th><th>Updated</th><th>Agents</th><th>Opened</th><th></th></tr>
+{{range .Runs}}
 <tr>
 <td>{{.Repository}}</td>
 <td>{{template "pipelines" .Pipelines}}</td>
@@ -46,6 +52,8 @@ dd { margin: 0; }
 <td class="{{.State}}">{{.State}}</td>
 <td>{{time .RunStartedAt}}</td>
 <td>{{time .UpdatedAt}}</td>
+<td>{{range .Agents}}<div>{{.Step}}</div>{{end}}</td>
+<td>{{template "opened" .Opened}}</td>
 <td><a href="{{.HTMLURL}}">GitHub</a></td>
 </tr>
 {{end}}
@@ -69,6 +77,29 @@ dd { margin: 0; }
 <dt>Started</dt><dd>{{time .RunStartedAt}}</dd>
 <dt>GitHub</dt><dd><a href="{{.HTMLURL}}">{{.HTMLURL}}</a></dd>
 </dl>
+{{end}}
+<h2>Agents</h2>
+{{if not .AgentsOK}}{{template "unavailable"}}{{end}}
+{{with .Run}}
+{{if .Agents}}
+<table>
+<tr><th>Step</th><th>First event</th><th>Last event</th></tr>
+{{range .Agents}}
+<tr><td>{{.Step}}</td><td>{{time .First}}</td><td>{{time .Last}}</td></tr>
+{{end}}
+</table>
+{{else if $.AgentsOK}}
+<p>No Agent sent telemetry.</p>
+{{end}}
+{{if .Opened}}
+<h2>Opened</h2>
+<table>
+<tr><th>What</th><th>Title</th><th>Opened at</th></tr>
+{{range .Opened}}
+<tr><td>{{template "link" .}}</td><td>{{.Title}}</td><td>{{time .OpenedAt}}</td></tr>
+{{end}}
+</table>
+{{end}}
 {{end}}
 <h2>Events</h2>
 <table>

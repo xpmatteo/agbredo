@@ -1,5 +1,5 @@
-// Command agbredo serves the Agbredo dashboard, receives GitHub webhooks and
-// forwards Claude Code telemetry to OpenObserve.
+// Command agbredo serves the Agbredo dashboard, receives GitHub webhooks,
+// forwards Claude Code telemetry to OpenObserve and asks it which Agents ran.
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"agbredo/internal/auth"
+	"agbredo/internal/openobserve"
 	"agbredo/internal/store"
 	"agbredo/internal/telemetry"
 	"agbredo/internal/web"
@@ -33,7 +34,8 @@ func serve() error {
 	env := map[string]string{}
 	for _, name := range []string{"AGBREDO_DATABASE_URL", "AGBREDO_BASE_URL", "AGBREDO_GITHUB_CLIENT_ID",
 		"AGBREDO_GITHUB_CLIENT_SECRET", "AGBREDO_GITHUB_WEBHOOK_SECRET", "AGBREDO_SESSION_KEY", "AGBREDO_USERS",
-		"AGBREDO_PIPELINE_REPOS", "AGBREDO_OPENOBSERVE_URL", "AGBREDO_OPENOBSERVE_AUTH"} {
+		"AGBREDO_PIPELINE_REPOS", "AGBREDO_OPENOBSERVE_URL", "AGBREDO_OPENOBSERVE_AUTH",
+		"AGBREDO_OPENOBSERVE_SEARCH_AUTH"} {
 		if env[name] = os.Getenv(name); env[name] == "" {
 			return fmt.Errorf("%s is required", name)
 		}
@@ -73,7 +75,8 @@ func serve() error {
 	mux.Handle("POST /api/otlp/v1/{signal}", telemetry.New(jwks.Keyfunc, env["AGBREDO_PIPELINE_REPOS"],
 		openObserve, env["AGBREDO_OPENOBSERVE_AUTH"]))
 	a.Register(mux)
-	web.Register(mux, db, a.Require)
+	agents := &openobserve.Client{URL: openObserve, Authorization: env["AGBREDO_OPENOBSERVE_SEARCH_AUTH"], HTTP: http.DefaultClient}
+	web.Register(mux, db, agents, a.Require)
 
 	log.Printf("listening on :%s", port)
 	server := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 10 * time.Second}

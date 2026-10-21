@@ -1,0 +1,23 @@
+{
+  "action": "opened",
+  "issue": {
+    "url": "https://api.github.com/repos/xpmatteo/agbredo/issues/11",
+    "id": 3456789012,
+    "html_url": "https://github.com/xpmatteo/agbredo/issues/11",
+    "number": 11,
+    "state": "open",
+    "title": "Write another haiku about robots",
+    "user": { "login": "github-actions[bot]", "type": "Bot" },
+    "body": "Please write another haiku on the same theme.\n\nAgbredo-Run: 18765432101/1\n",
+    "created_at": "2026-10-21T06:50:05Z",
+    "updated_at": "2026-10-21T06:50:05Z",
+    "labels": [{ "name": "ai-agent-generated" }]
+  },
+  "repository": {
+    "id": 1050000000,
+    "name": "agbredo",
+    "full_name": "xpmatteo/agbredo",
+    "html_url": "https://github.com/xpmatteo/agbredo"
+  },
+  "sender": { "login": "github-actions[bot]", "type": "Bot" }
+}

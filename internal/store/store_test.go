@@ -19,7 +19,7 @@ func openTestStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	if _, err := s.pool.Exec(context.Background(), "TRUNCATE events"); err != nil {
+	if _, err := s.pool.Exec(context.Background(), "TRUNCATE events, opened"); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -169,5 +169,34 @@ func TestState(t *testing.T) {
 		if got := (Event{Status: c.status, Conclusion: c.conclusion}).State(); got != c.want {
 			t.Errorf("%s/%s: got %s, want %s", c.status, c.conclusion, got, c.want)
 		}
+	}
+}
+
+func opened(delivery string, runID int64, attempt int, kind string, at time.Time) Opened {
+	return Opened{
+		DeliveryID: delivery, Repository: "xpmatteo/agbredo", Kind: kind, Number: 7, Title: "Add a haiku",
+		HTMLURL: "https://github.com/xpmatteo/agbredo/pull/7", OpenedAt: at, RunID: runID, RunAttempt: attempt,
+	}
+}
+
+func TestOpenedBy(t *testing.T) {
+	s := openTestStore(t)
+	pr := opened("d2", 1, 1, "pull_request", t0.Add(time.Minute))
+	issue := opened("d1", 1, 1, "issue", t0)
+	retry := opened("d3", 1, 2, "issue", t0.Add(time.Hour))
+	for _, o := range []Opened{pr, issue, retry, opened("other-run", 2, 1, "issue", t0), opened("d1", 1, 1, "issue", t0)} {
+		if err := s.InsertOpened(context.Background(), o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.OpenedBy(context.Background(), []int64{1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range got {
+		got[i].OpenedAt = got[i].OpenedAt.UTC()
+	}
+	if want := []Opened{issue, pr, retry}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got  %+v\nwant %+v", got, want)
 	}
 }

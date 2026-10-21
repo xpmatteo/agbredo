@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"agbredo/internal/openobserve"
 	"agbredo/internal/store"
 )
 
@@ -28,18 +29,74 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 type Store interface {
 	LatestRuns(ctx context.Context) ([]store.Event, error)
 	RunEvents(ctx context.Context, runID int64, attempt int) ([]store.Event, error)
+	OpenedBy(ctx context.Context, runIDs []int64) ([]store.Opened, error)
 	Ping(ctx context.Context) error
 }
 
+// Agents tells which Agents ran in a Run.
+type Agents interface {
+	AgentSteps(ctx context.Context, runIDs []int64, since time.Time) ([]openobserve.AgentStep, error)
+}
+
+// run is a Run with its Agents and what it opened.
+type run struct {
+	store.Event
+	Agents []openobserve.AgentStep
+	Opened []store.Opened
+}
+
+// details adds to each Run its Agents and the PRs and Issues it opened. When
+// OpenObserve fails we still show the Runs, and agentsOK is false.
+func details(ctx context.Context, s Store, a Agents, events []store.Event) (runs []run, agentsOK bool, err error) {
+	var ids []int64
+	since := time.Now()
+	for _, e := range events {
+		ids = append(ids, e.RunID)
+		if !e.RunStartedAt.IsZero() && e.RunStartedAt.Before(since) {
+			since = e.RunStartedAt
+		}
+	}
+	opened, err := s.OpenedBy(ctx, ids)
+	if err != nil {
+		return nil, false, err
+	}
+	actx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	agents, err := a.AgentSteps(actx, ids, since.Add(-time.Minute))
+	if err != nil {
+		log.Printf("web: agent steps: %v", err)
+	}
+	runs = make([]run, len(events))
+	for i, e := range events {
+		runs[i].Event = e
+		for _, o := range opened {
+			if o.RunID == e.RunID && o.RunAttempt == e.RunAttempt {
+				runs[i].Opened = append(runs[i].Opened, o)
+			}
+		}
+		for _, step := range agents {
+			if step.RunID == e.RunID && step.RunAttempt == e.RunAttempt {
+				runs[i].Agents = append(runs[i].Agents, step)
+			}
+		}
+	}
+	return runs, err == nil, nil
+}
+
 // Register adds the pages, behind require, and /readyz to mux.
-func Register(mux *http.ServeMux, s Store, require func(http.Handler) http.Handler) {
+func Register(mux *http.ServeMux, s Store, a Agents, require func(http.Handler) http.Handler) {
 	mux.Handle("GET /{$}", require(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		runs, err := s.LatestRuns(r.Context())
+		latest, err := s.LatestRuns(r.Context())
 		if err != nil {
 			serverError(w, err)
 			return
 		}
-		render(w, "runs", runs)
+		runs, agentsOK, err := details(r.Context(), s, a, latest)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		render(w, "runs", map[string]any{"Runs": runs, "AgentsOK": agentsOK})
 	})))
 	mux.Handle("GET /runs/{run_id}/{attempt}", require(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		runID, err1 := strconv.ParseInt(r.PathValue("run_id"), 10, 64)
@@ -57,7 +114,12 @@ func Register(mux *http.ServeMux, s Store, require func(http.Handler) http.Handl
 			http.NotFound(w, r)
 			return
 		}
-		render(w, "run", map[string]any{"Run": events[len(events)-1], "Events": events})
+		runs, agentsOK, err := details(r.Context(), s, a, events[len(events)-1:])
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		render(w, "run", map[string]any{"Run": runs[0], "Events": events, "AgentsOK": agentsOK})
 	})))
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.Ping(r.Context()); err != nil {

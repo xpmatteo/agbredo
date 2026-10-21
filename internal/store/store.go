@@ -1,4 +1,5 @@
-// Package store keeps every workflow_run webhook in the events table.
+// Package store keeps every workflow_run webhook in the events table, and
+// the PRs and Issues that Runs opened in the opened table.
 package store
 
 import (
@@ -46,6 +47,19 @@ func (e Event) State() string {
 		return e.Conclusion
 	}
 	return e.Status
+}
+
+// Opened is a PR or Issue opened by a Run.
+type Opened struct {
+	DeliveryID string
+	Repository string
+	Kind       string // pull_request | issue
+	Number     int
+	Title      string
+	HTMLURL    string
+	OpenedAt   time.Time
+	RunID      int64
+	RunAttempt int
 }
 
 type Store struct {
@@ -112,5 +126,32 @@ func (s *Store) query(ctx context.Context, sql string, args ...any) ([]Event, er
 			&e.Conclusion, &e.WorkflowName, &e.HTMLURL, &e.HeadBranch, &e.EventName, &e.Actor,
 			&e.RunStartedAt, &e.UpdatedAt, &e.Pipelines)
 		return e, err
+	})
+}
+
+// InsertOpened stores o. A delivery that is already stored is ignored.
+func (s *Store) InsertOpened(ctx context.Context, o Opened) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO opened (delivery_id, repository, kind, number, title, html_url, opened_at, run_id, run_attempt)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (delivery_id) DO NOTHING`,
+		o.DeliveryID, o.Repository, o.Kind, o.Number, o.Title, o.HTMLURL, o.OpenedAt, o.RunID, o.RunAttempt)
+	return err
+}
+
+// OpenedBy returns the PRs and Issues opened by the Runs with these run IDs,
+// all attempts, oldest first.
+func (s *Store) OpenedBy(ctx context.Context, runIDs []int64) ([]Opened, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT delivery_id, repository, kind, number, title, html_url, opened_at, run_id, run_attempt
+		FROM opened WHERE run_id = ANY($1) ORDER BY opened_at, received_at`, runIDs)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Opened, error) {
+		var o Opened
+		err := row.Scan(&o.DeliveryID, &o.Repository, &o.Kind, &o.Number, &o.Title, &o.HTMLURL, &o.OpenedAt,
+			&o.RunID, &o.RunAttempt)
+		return o, err
 	})
 }
