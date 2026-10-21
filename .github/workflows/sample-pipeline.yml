@@ -2,6 +2,9 @@
 # The Agent writes content (a haiku file, issue and PR text).
 # Deterministic Steps open the Issue and the PR, add the Agbredo-Run marker
 # and the ai-agent-generated label.
+# Claude Code sends its telemetry to Agbredo, which forwards it to OpenObserve.
+# The job proves who it is with a GitHub OIDC token, so the repository that
+# uses this Pipeline needs no telemetry secret.
 #
 # This is a reusable workflow, started by sample.yml. Agbredo only shows runs
 # whose workflow_run webhook has a non-empty referenced_workflows, and GitHub
@@ -23,6 +26,7 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+      id-token: write
     env:
       OUT: agbredo-out
       HAIKU: samples/haiku-${{ github.run_id }}-${{ github.run_attempt }}.md
@@ -31,7 +35,21 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      # Claude Code runs this script to get the headers of its telemetry
+      # requests. It asks GitHub for a fresh OIDC token each time.
+      - name: Write the telemetry headers helper
+        run: |
+          cat > "$RUNNER_TEMP/agbredo-otel-headers.sh" <<'EOF'
+          #!/bin/sh
+          set -e
+          token=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=agbredo" | jq -r .value)
+          printf '{"Authorization": "Bearer %s"}\n' "$token"
+          EOF
+          chmod +x "$RUNNER_TEMP/agbredo-otel-headers.sh"
+
       - name: Agent writes a haiku
+        id: agent
         uses: anthropics/claude-code-action@c2d289cca71cda091794983294573dd33f0f6e7a # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -44,6 +62,22 @@ jobs:
             - ${{ env.OUT }}/pr-title.txt: one line, a title for a pull request that adds the haiku.
             - ${{ env.OUT }}/pr-body.md: two or three sentences for that pull request.
             Do not do anything else.
+          # GitHub OIDC tokens live a few minutes, so get a new one every minute.
+          settings: |
+            {
+              "otelHeadersHelper": "${{ runner.temp }}/agbredo-otel-headers.sh",
+              "env": {
+                "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+                "CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS": "60000",
+                "OTEL_METRICS_EXPORTER": "otlp",
+                "OTEL_LOGS_EXPORTER": "otlp",
+                "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "https://www.agbredo.com/api/otlp",
+                "OTEL_METRIC_EXPORT_INTERVAL": "10000",
+                "OTEL_LOGS_EXPORT_INTERVAL": "5000",
+                "OTEL_RESOURCE_ATTRIBUTES": "github.repository=${{ github.repository }},github.run_id=${{ github.run_id }},github.run_attempt=${{ github.run_attempt }},github.job=${{ github.job }},github.step=agent"
+              }
+            }
           claude_args: --model claude-haiku-5-5 --allowedTools Write --max-turns 10
 
       - name: Make sure the label exists

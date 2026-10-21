@@ -16,7 +16,7 @@ My (Matt's) personal goals is to learn how build such a dashboard, so that I can
 
  - Language: Go with server-rendered HTML
  - Persistence: PostgreSQL
- - Claude Code Telemetry saved to OpenObserve, authenticated with a OpenObserve token stored as a GH secret
+ - Claude Code Telemetry saved to OpenObserve. Claude Code sends OTLP to Agbredo at `/api/otlp/v1/...`, with a GitHub OIDC token (audience `agbredo`) as Bearer token. Agbredo checks the token and that its `job_workflow_ref` is a Pipeline in one of the repos in `AGBREDO_PIPELINE_REPOS`, then forwards the body unchanged to OpenObserve with the one OpenObserve token it keeps. So the repos that use a Pipeline need no telemetry secret. Agbredo does not read the OTLP body.
  - Agbredo receives information from GH webhooks
  - Agbredo can query OpenObserve
  - Deployment: to Railway
@@ -61,9 +61,9 @@ The first attempt grew to about 10k lines of Go in 3 days. Where the complexity 
 
 So, this time:
 
-- Not now: telemetry ingestion, OIDC, polling, frozen copies, thresholds, backward compatibility. Add them only when a real need shows up.
+- Not now: telemetry parsing or storage in Agbredo, polling, frozen copies, thresholds, backward compatibility. Add them only when a real need shows up.
 - One source per fact. Run status comes only from `workflow_run` webhooks. If a webhook is lost, we accept it.
-- Trust model: HMAC signature on webhooks; GH login plus `AGBREDO_USERS` on the dashboard. Nothing more for now.
+- Trust model: HMAC signature on webhooks; GH login plus `AGBREDO_USERS` on the dashboard; GitHub OIDC token plus `AGBREDO_PIPELINE_REPOS` on telemetry. Nothing more for now. We trust the run attributes that a trusted Pipeline puts in its telemetry.
 - Link a PR or Issue to a Run only through an explicit marker. No guessing. The marker is the last line of the PR or Issue body: `Agbredo-Run: <GITHUB_RUN_ID>/<GITHUB_RUN_ATTEMPT>`. Agbredo reads it from the `pull_request` or `issues` webhook.
 - Pipeline rule: Agents write content (title, body, file changes); Deterministic Steps open PRs and Issues and add the marker. See `pipelines/actions/agent-instructions-audit/scripts/open-pr.sh` for an example.
 - In reviews, the default answer is "new ticket" or "no action". "Fix now" is only for real bugs in the current slice.
