@@ -29,6 +29,7 @@ type Handler struct {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 25<<20))
 	if err != nil {
+		log.Printf("reject webhook %s: cannot read body: %v", r.Header.Get("X-GitHub-Delivery"), err)
 		http.Error(w, "cannot read body", http.StatusBadRequest)
 		return
 	}
@@ -36,6 +37,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mac.Write(body)
 	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(r.Header.Get("X-Hub-Signature-256")), []byte(want)) {
+		log.Printf("reject webhook %s: bad signature", r.Header.Get("X-GitHub-Delivery"))
 		http.Error(w, "bad signature", http.StatusUnauthorized)
 		return
 	}
@@ -45,6 +47,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := Parse(r.Header.Get("X-GitHub-Delivery"), body)
 	if err != nil {
+		log.Printf("reject webhook %s: bad workflow_run payload: %v", r.Header.Get("X-GitHub-Delivery"), err)
 		http.Error(w, "bad workflow_run payload", http.StatusBadRequest)
 		return
 	}
