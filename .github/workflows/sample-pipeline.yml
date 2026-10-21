@@ -1,0 +1,61 @@
+# Sample Pipeline, for testing Agbredo.
+# The Agent writes content (a haiku file, issue and PR text).
+# Deterministic Steps open the Issue and the PR and add the Agbredo-Run marker.
+name: Sample Pipeline
+
+on:
+  workflow_call:
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+
+jobs:
+  haiku:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      OUT: agbredo-out
+      HAIKU: samples/haiku-${{ github.run_id }}-${{ github.run_attempt }}.md
+      MARKER: "Agbredo-Run: ${{ github.run_id }}/${{ github.run_attempt }}"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Agent writes a haiku
+        uses: anthropics/claude-code-action@c2d289cca71cda091794983294573dd33f0f6e7a # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Write a haiku about watching robots work. Then create these files with the Write tool:
+            - ${{ env.HAIKU }}: the haiku.
+            - ${{ env.OUT }}/issue-title.txt: one line, a title for an issue that asks for another haiku on the same theme.
+            - ${{ env.OUT }}/issue-body.md: two or three sentences for that issue.
+            - ${{ env.OUT }}/pr-title.txt: one line, a title for a pull request that adds the haiku.
+            - ${{ env.OUT }}/pr-body.md: two or three sentences for that pull request.
+            Do not do anything else.
+          claude_args: --allowedTools Write --max-turns 10
+
+      - name: Open the Issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '\n\n%s\n' "$MARKER" >> "$OUT/issue-body.md"
+          gh issue create --title "$(head -n 1 "$OUT/issue-title.txt")" --body-file "$OUT/issue-body.md"
+
+      - name: Open the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: sample-pipeline/${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          printf '\n\n%s\n' "$MARKER" >> "$OUT/pr-body.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add "$HAIKU"
+          git commit -m "Add a haiku"
+          git push origin "$BRANCH"
+          gh pr create --head "$BRANCH" --title "$(head -n 1 "$OUT/pr-title.txt")" --body-file "$OUT/pr-body.md"
