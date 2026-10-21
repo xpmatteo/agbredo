@@ -54,7 +54,7 @@ func serve() error {
 	a := auth.New(env["AGBREDO_BASE_URL"], env["AGBREDO_GITHUB_CLIENT_ID"], env["AGBREDO_GITHUB_CLIENT_SECRET"],
 		env["AGBREDO_SESSION_KEY"], env["AGBREDO_USERS"])
 	mux := http.NewServeMux()
-	mux.Handle("POST /webhooks/github", &webhook.Handler{Secret: []byte(env["AGBREDO_GITHUB_WEBHOOK_SECRET"]), Store: db})
+	mux.Handle("POST /api/github/webhook", &webhook.Handler{Secret: []byte(env["AGBREDO_GITHUB_WEBHOOK_SECRET"]), Store: db})
 	a.Register(mux)
 	web.Register(mux, db, a.Require)
 

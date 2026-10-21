@@ -76,7 +76,7 @@ func sign(body []byte) string {
 }
 
 func post(h http.Handler, event, signature string, body []byte) *httptest.ResponseRecorder {
-	r := httptest.NewRequest("POST", "/webhooks/github", bytes.NewReader(body))
+	r := httptest.NewRequest("POST", "/api/github/webhook", bytes.NewReader(body))
 	r.Header.Set("X-GitHub-Event", event)
 	r.Header.Set("X-GitHub-Delivery", "delivery-1")
 	r.Header.Set("X-Hub-Signature-256", signature)
