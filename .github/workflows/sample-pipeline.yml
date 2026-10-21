@@ -1,6 +1,11 @@
 # Sample Pipeline, for testing Agbredo.
 # The Agent writes content (a haiku file, issue and PR text).
 # Deterministic Steps open the Issue and the PR and add the Agbredo-Run marker.
+#
+# This is a reusable workflow, started by sample.yml. Agbredo only shows runs
+# whose workflow_run webhook has a non-empty referenced_workflows, and GitHub
+# fills that list only when a workflow calls a reusable one. So the work lives
+# here (the Pipeline) and sample.yml only calls it (the Deployment).
 name: Sample Pipeline
 
 on:
@@ -37,7 +42,7 @@ jobs:
             - ${{ env.OUT }}/pr-title.txt: one line, a title for a pull request that adds the haiku.
             - ${{ env.OUT }}/pr-body.md: two or three sentences for that pull request.
             Do not do anything else.
-          claude_args: --allowedTools Write --max-turns 10
+          claude_args: --model claude-haiku-5-5 --allowedTools Write --max-turns 10
 
       - name: Open the Issue
         env:

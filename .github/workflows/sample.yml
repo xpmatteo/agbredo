@@ -1,4 +1,9 @@
 # Uses the Sample Pipeline in this repository. Start it by hand from the Actions tab.
+#
+# This file is the Deployment: it only calls the Pipeline in sample-pipeline.yml.
+# Agbredo only shows runs whose workflow_run webhook has a non-empty
+# referenced_workflows, and GitHub fills that list only when a workflow calls a
+# reusable one. A single workflow doing the work itself would be ignored.
 name: Sample
 
 on:
